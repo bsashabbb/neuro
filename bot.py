@@ -24,8 +24,10 @@ from config import Config
 from aiohttp import ClientSession
 import aiohttp
 from ai import gemini
-from db import get_db
+from db import get_db, create_tables
 from db.user import User
+
+create_tables()
 
 token = Config.BOT_TOKEN
 bot = Bot(token=token)
@@ -100,10 +102,10 @@ def find_prompt(text):
 
 
 def is_banned(id):
-    with open('bans.json') as f:
-        bans = json.load(f)
-    if str(id) in bans:
-        return True
+    with get_db() as db:
+        user = db.get(User, id)
+        if user:
+            return user.banned
 
 
 def replace_links(match):
@@ -186,16 +188,22 @@ async def start(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        '''with open('users.json') as f:
-            users = json.load(f)
-        if str(message.from_user.id) not in users:
-            users[str(message.from_user.id)] = message.from_user.first_name
-        with open('users.json', 'w') as f:
-            json.dump(users, f)'''
-        with get_db() as db:
-            user = User(id=message.from_user.id)
-            user.set_object(message.from_user)
-            db.add(user)
+        with get_db() as db:  # Получаем сессию базы данных
+            user_id = message.from_user.id
+
+            # Проверяем, существует ли пользователь с таким id
+            existing_user = db.query(User).filter(User.id == user_id).first()
+
+            if existing_user:
+                # Если пользователь уже существует, обновляем его данные
+                existing_user.set_object(message.from_user)
+            else:
+                # Если пользователя нет, создаем нового
+                new_user = User(id=user_id)
+                new_user.set_object(message.from_user)
+                db.add(new_user)
+
+            # Фиксируем изменения в базе данных
             db.commit()
         with open('settings.json') as f:
             settings = json.load(f)
@@ -707,12 +715,13 @@ async def prompts(message: Message):
 @dp.message(Command(commands=['ban']))
 async def ban(message: Message):
     if message.from_user.id == creator:
-        with open('bans.json') as f:
-            bans = json.load(f)
-        if message.reply_to_message.from_user.id not in bans:
-            bans[str(message.reply_to_message.from_user.id)] = message.reply_to_message.from_user.first_name
-        with open('bans.json', 'w') as f:
-            json.dump(bans, f)
+        user_id = message.reply_to_message.from_user.id
+
+        with get_db() as db:
+            user = db.get(User, user_id)
+            user.banned = True
+            db.commit()
+
         await message.reply(f'{message.reply_to_message.from_user.first_name} забанен')
     else:
         await message.reply('Вы не админ')
@@ -721,11 +730,13 @@ async def ban(message: Message):
 @dp.message(Command(commands=['unban']))
 async def unban(message: Message):
     if message.from_user.id == creator:
-        with open('bans.json') as f:
-            bans = json.load(f)
-        del bans[str(message.reply_to_message.from_user.id)]
-        with open('bans.json', 'w') as f:
-            json.dump(bans, f)
+        user_id = message.reply_to_message.from_user.id
+
+        with get_db() as db:
+            user = db.get(User, user_id)
+            user.banned = False
+            db.commit()
+
         await message.reply(f'{message.reply_to_message.from_user.first_name} разбанен')
     else:
         await message.reply('Вы не админ')

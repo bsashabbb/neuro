@@ -6,7 +6,10 @@ from contextlib import contextmanager
 Base = declarative_base()
 
 engine = create_engine('sqlite:///neuro.db')
-Base.metadata.create_all(engine)
+
+def create_tables():
+    Base.metadata.create_all(engine)
+
 SessionLocal = sessionmaker(bind=engine)
 
 @contextmanager
