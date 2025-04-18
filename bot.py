@@ -24,6 +24,8 @@ from config import Config
 from aiohttp import ClientSession
 import aiohttp
 from ai import gemini
+from db import get_db
+from db.user import User
 
 token = Config.BOT_TOKEN
 bot = Bot(token=token)
@@ -184,12 +186,17 @@ async def start(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        with open('users.json') as f:
+        '''with open('users.json') as f:
             users = json.load(f)
         if str(message.from_user.id) not in users:
             users[str(message.from_user.id)] = message.from_user.first_name
         with open('users.json', 'w') as f:
-            json.dump(users, f)
+            json.dump(users, f)'''
+        with get_db() as db:
+            user = User(id=message.from_user.id)
+            user.set_object(message.from_user)
+            db.add(user)
+            db.commit()
         with open('settings.json') as f:
             settings = json.load(f)
         if str(message.from_user.id) not in settings:
