@@ -1,22 +1,25 @@
-import requests
+import httpx
+from utils.http_client import get_client
+import base64
+from typing import Optional, List, Dict, Tuple
+
+OPO_API = 'https://api.opo.pp.ru/'
 
 
-def onlinegen(prompt):
-    response = requests.post('https://api.r00t.us.kg/v1/chat/simple/gpt', json={"prompt": prompt})
+async def onlinegen(prompt):
+    async with get_client() as client:
+        response = await client.post(f'{OPO_API}v1/chat/simple/gpt', json={"prompt": prompt})
+    return response.text
+
+async def fluxgen(prompt):
+    async with get_client() as client:
+        response = await client.post(f'{OPO_API}v1/image/flux', json={"prompt": prompt})
     return response.text
 
 
-def geminigen():
-    pass
-
-
-def fluxgen(prompt):
-    response = requests.post('https://api.r00t.us.kg/v1/image/flux', json={"prompt": prompt})
-    return response.text
-
-
-def sdgen(prompt):
-    response = requests.post('https://api.r00t.us.kg/v1/image/sd', json={"prompt": prompt})
+async def sdgen(prompt):
+    async with get_client() as client:
+        response = await client.post(f'{OPO_API}v1/image/sd', json={"prompt": prompt})
     return response.text
 
 

@@ -20,15 +20,21 @@ from google.generativeai.types import FunctionLibrary, FunctionDeclaration
 
 from funcs_for_resp import *
 import generate
+from config import Config
+from aiohttp import ClientSession
+import aiohttp
+from ai import gemini
 
-token = os.getenv('NEURO_TOKEN')
+token = Config.BOT_TOKEN
 bot = Bot(token=token)
 dp = Dispatcher()
 
-creator = int(os.getenv('CREATOR'))  # TODO: in constant class
-prompts_channel = int(os.getenv('PROMPTS_CHANNEL'))
-log_chat = int(os.getenv('LOG_CHAT'))
-support_chat = int(os.getenv('SUPPORT_CHAT'))
+creator = Config.CREATOR
+prompts_channel = Config.PROMPTS_CHANNEL
+log_chat = Config.LOG_CHAT
+support_chat = Config.SUPPORT_CHAT
+safety_settings = Config.SAFETY_SETTINGS
+main_chat = Config.MAIN_CHAT
 
 safety_settings = [
     {
@@ -202,7 +208,7 @@ async def online(message: Message):
         try:
             prompt = message.text.replace('/online ', '')
             prompt = prompt.replace('/online@neuro_gemini_bot ', '')
-            response = generate.onlinegen(prompt)
+            response = await generate.onlinegen(prompt)
             await message.reply(response)
         except Exception as e:
             await message.reply(f'Ошибка: {e}')
@@ -221,7 +227,7 @@ async def sd(message: Message):
                 settings = json.load(f)
             photos = []
             for i in range(settings[str(message.from_user.id)]['pictures_count']):
-                request = generate.sdgen(prompt)
+                request = await generate.sdgen(prompt)
                 photos.append(types.InputMediaPhoto(media=request))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
@@ -246,7 +252,7 @@ async def flux(message: Message):
                 settings = json.load(f)
             photos = []
             for i in range(settings[str(message.from_user.id)]['pictures_count']):
-                request = generate.fluxgen(prompt)
+                request = await generate.fluxgen(prompt)
                 photos.append(types.InputMediaPhoto(media=request))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
@@ -393,10 +399,7 @@ async def addkey(message: Message):
     data = message.text.replace('/addkey ', '')
     data = data.replace('/addkey@neuro_gemini_bot ', '')
     try:
-        genai.configure(api_key=data)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
-        chat = model.start_chat(history=[])
-        chat.send_message('hi')
+        await gemini.gemini_gen('hi', data)
         keys.append(data)
         with open('keys.json', 'w') as f:
             json.dump(keys, f, ensure_ascii=False, indent=4)
@@ -413,11 +416,9 @@ async def test(message: Message):
     with open('keys.json') as f:
         keys = json.load(f)
     for key in keys:
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
         try:
-            response = model.generate_content('Привет!', safety_settings=safety_settings)
-            await message.reply(response.text)
+            response = await gemini.gemini_gen('Привет!', key)
+            await message.reply(response)
             return
         except Exception as e:
             continue
@@ -828,11 +829,7 @@ async def command_response(message: Message):
         context = contexts[f'{message.from_user.id}-{command}']
         for key in keys:
             try:
-                genai.configure(api_key=key)
-                model = genai.GenerativeModel('gemini-2.0-flash-exp',
-                                              system_instruction=system_prompt)
-                chat = model.start_chat(history=context)
-                request = chat.send_message(prompt, safety_settings=safety_settings)
+                request = await gemini.gemini_gen(prompt, key, context, system_prompt)
                 break
             except Exception as e:
                 continue
@@ -842,7 +839,7 @@ async def command_response(message: Message):
             return
         except:
             pass
-        response = find_draw_strings(request.text)
+        response = find_draw_strings(request)
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
         with open('settings.json') as f:
@@ -862,8 +859,8 @@ async def command_response(message: Message):
             x[0] += 4096
             x[1] += 4096
         await wait_msg.delete()
-        context.append({'role': 'user', 'parts': prompt})
-        context.append({'role': 'model', 'parts': response[1]})
+        context.append({'role': 'user', 'parts': [{'text': prompt}]})
+        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
         with open('prompts_message_ids.json') as f:
             ids = json.load(f)
         if f'{command}' not in ids:
@@ -880,9 +877,7 @@ async def command_response(message: Message):
         photos = []
         if settings[str(message.from_user.id)]['pictures_in_dialog']:
             for prompt in response[0]:
-                request = requests.post(
-                    f'https://api.r00t.us.kg/v1/image/{settings[str(message.from_user.id)]["imageai"]}',
-                    json={"prompt": prompt})
+                request = generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request.text, caption=prompt))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
@@ -920,13 +915,12 @@ async def reply_response(message: Message):
         wait_msg = await message.reply('Думаю...')
         for key in keys:
             try:
-                genai.configure(api_key=key)
-                model = genai.GenerativeModel('gemini-2.0-flash-exp',
-                                              system_instruction=system_prompt)
-                chat = model.start_chat(history=context)
-                request = chat.send_message(prompt, safety_settings=safety_settings)
+                print('dddddddddddddihogiuhkiouiiUGJUGFJHGFJ')
+                request = await gemini.gemini_gen(prompt, key, context, system_prompt)
+                print('KUGBBBBBBBbbbbbbbbbbbbbbbbbbbbbbBBKJHKJHGkJHGKJHGKHG')
                 break
             except Exception as e:
+                print('GOVNO                   '+e+'            GOVNO')
                 continue
         try:
             await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
@@ -934,7 +928,7 @@ async def reply_response(message: Message):
             return
         except:
             pass
-        response = find_draw_strings(request.text)
+        response = find_draw_strings(request)
         with open('settings.json') as f:
             settings = json.load(f)
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
@@ -954,8 +948,8 @@ async def reply_response(message: Message):
             x[0] += 4096
             x[1] += 4096
         await wait_msg.delete()
-        context.append({'role': 'user', 'parts': prompt})
-        context.append({'role': 'model', 'parts': response[1]})
+        context.append({'role': 'user', 'parts': [{'text': prompt}]})
+        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
         for id in ids1:
             ids[f'{command}'].append(id)
         contexts[f'{str(message.from_user.id)}-{command}'] = context
@@ -968,9 +962,7 @@ async def reply_response(message: Message):
         photos = []
         if settings[str(message.from_user.id)]['pictures_in_dialog']:
             for prompt in response[0]:
-                request = requests.post(
-                    f'https://api.r00t.us.kg/v1/image/{settings[str(message.from_user.id)]["imageai"]}',
-                    json={"prompt": prompt})
+                request = generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request.text, caption=prompt))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
@@ -1088,6 +1080,7 @@ async def callback(call: CallbackQuery):
         await call.answer('Кнопки сброса диалога')
 
     elif call.data == 'reset_on':
+        await call.message.edit_text('Загрузка... Подождите.')
         with open('settings.json') as f:
             settings = json.load(f)
         settings[str(call.from_user.id)]['reset'] = True
@@ -1098,6 +1091,7 @@ async def callback(call: CallbackQuery):
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
     elif call.data == 'reset_off':
+        await call.message.edit_text('Загрузка... Подождите.')
         with open('settings.json') as f:
             settings = json.load(f)
         settings[str(call.from_user.id)]['reset'] = False
@@ -1111,6 +1105,7 @@ async def callback(call: CallbackQuery):
         await call.answer('Генерация картинок в диалоге')
 
     elif call.data.startswith('pictures_in_chat_'):
+        await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
         with open('settings.json') as f:
             settings = json.load(f)
@@ -1129,6 +1124,7 @@ async def callback(call: CallbackQuery):
         await call.answer('Количество генерируемых картинок')
 
     elif call.data.startswith('pictures_count_'):
+        await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
         with open('settings.json') as f:
             settings = json.load(f)
@@ -1143,10 +1139,14 @@ async def callback(call: CallbackQuery):
         await call.answer('Нейросеть для генерации картинок в диалоге')
 
     elif call.data.startswith('imageai_'):
+        await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
         with open('settings.json') as f:
             settings = json.load(f)
         settings[str(call.from_user.id)]['imageai'] = data[1]
+        with open('settings.json', 'w') as f:
+            json.dump(settings, f)
+            await call.answer(f'Нейросеть для генерации картинок в диалоге изменена на {settings[str(call.from_user.id)]['imageai']}')
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 

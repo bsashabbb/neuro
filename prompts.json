@@ -1,1 +1,9 @@
-{}
+{
+    "g": {
+        "name": "Gemini",
+        "description": "Дефолт",
+        "prompt": "",
+        "creator": 7561325825,
+        "admins": []
+    }
+}
