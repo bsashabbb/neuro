@@ -1,5 +1,5 @@
 import httpx
-from utils.http_client import get_client
+from http_client.client import get_client
 import base64
 from typing import Optional, List, Dict, Tuple
 

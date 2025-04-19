@@ -108,6 +108,13 @@ def is_banned(id):
             return user.banned
 
 
+def is_admin(id):
+    with get_db() as db:
+        user = db.get(User, id)
+        if user:
+            return user.admin
+
+
 def replace_links(match):
     url = match.group(0)
     return get_article(url)
@@ -132,7 +139,7 @@ def default_sets(id):  # TODO: work
     pass
 
 
-def in_users(id):  # TODO: work
+def is_user(id):  # TODO: work
     pass
 
 
@@ -288,9 +295,9 @@ async def help(message: Message):
                         '/prompts - список промптов\n/reset - очистить контекст\n/help - помощь\n/settings - настройки'
                         '\n/unicode - посмотреть символы unicode\n/send - отправить сообщение админу\n/stats - '
                         'статистика\n/profile - профиль')
-        with open('admins.json') as f:
-            admins = json.load(f)
-        if str(message.from_user.id) in admins or message.from_user.id == creator:
+        with get_db() as db:
+            admin = db.query(User).filter(User.admin==True, User.id==message.from_user.id).first()
+        if admin or message.from_user.id == creator:
             help_message += ('\n/addprompt <команда>|<название>|<описание>|<промпт> - добавить/изменить промпт\n'
                              '/delprompt <команда> - удалить промпт\n/getprompt <команда> - просмотреть промпт\n'
                              '/myprompts - просмотреть свои промпты\n/addadmin <команда> - добавить админа к промпту\n'
@@ -319,27 +326,20 @@ async def stats(message: Message):
     else:
         with open('prompts.json') as f:
             prompts = json.load(f)
-        prompts_count = 0
-        for _ in prompts:
-            prompts_count += 1
+        prompts_count = len(prompts)
 
-        with open('bans.json') as f:
-            bans = json.load(f)
-        bans_count = 0
-        for _ in bans:
-            bans_count += 1
+        with get_db() as db:
+            bans = db.query(User).filter(User.banned==True).all()
+        bans_count = len(bans)
 
-        with open('admins.json') as f:
-            admins = json.load(f)
-        admins_count = 0
-        for _ in admins:
-            admins_count += 1
+        with get_db() as db:
+            admins = db.query(User).filter(User.admin==True).all()
+        admins_count = len(admins)
 
-        with open('users.json') as f:
-            users = json.load(f)
-        users_count = 0
-        for _ in users:
-            users_count += 1
+        with get_db() as db:
+            users = db.query(User).all()
+        users_count = len(users)
+        
         await message.reply(
             f'Статистика:\n\nПромпты: {prompts_count}\nБаны: {bans_count}\nАдмины: {admins_count}\nПользователи: {users_count}')
 
@@ -349,26 +349,35 @@ async def profile(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        with open('admins.json') as f:
-            admins = json.load(f)
-        if str(message.from_user.id) in admins:
+        with get_db() as db:
+            user = db.query(User).filter(User.id==message.from_user.id).first()
+
+        if user.admin == True:
             user_admin_status = 'да'
         else:
             user_admin_status = 'нет'
-        await message.reply(f'{message.from_user.mention_html("Вы")} админ: {user_admin_status}',
+
+        await message.reply(f'Админ: {user_admin_status}',
                             parse_mode=ParseMode.HTML)
 
 
 @dp.message(Command(commands=['your_profile']))  # TODO: work with `profile()`
 async def your_profile(message: Message):
     if message.from_user.id == creator:
-        with open('admins.json') as f:
-            admins = json.load(f)
-        if str(message.reply_to_message.from_user.id) in admins:
+        with get_db() as db:
+            user = db.query(User).filter(User.id==message.reply_to_message.from_user.id).first()
+
+        if user.admin == True:
             user_admin_status = 'да'
         else:
             user_admin_status = 'нет'
-        await message.reply(f'{message.reply_to_message.from_user.mention_html()} админ: {user_admin_status}',
+
+        if user.banned == True:
+            user_ban_status = 'да'
+        else:
+            user_ban_status = 'нет'
+
+        await message.reply(f'Админ: {user_admin_status}\nЗабанен: {user_ban_status}',
                             parse_mode=ParseMode.HTML)
 
 
@@ -472,9 +481,9 @@ async def message_to_admin(message: Message, state: FSMContext):
 
 @dp.message(Command(commands=['addprompt']))
 async def addprompt(message: Message):
-    with open('admins.json') as f:
-        admins = json.load(f)
-    if str(message.from_user.id) in admins or message.from_user.id == creator:
+    with get_db() as db:
+        user = db.query(User).filter(User.id==message.from_user.id).first()
+    if user.admin == True or message.from_user.id == creator:
         data = find_prompt(message.text)
         with open('prompts.json') as f:
             prompts = json.load(f)
@@ -502,8 +511,10 @@ async def addprompt(message: Message):
             with open('prompts.json', 'w') as f:
                 json.dump(prompts, f, ensure_ascii=False, indent=4)
             await message.reply(f'Промпт /{data[0]} изменён')
+            with get_db() as db:
+                prompt_creator = db.query(User).filter(User.id==creator_of_prompt).first()
             await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {admins[str(creator_of_prompt)]} (`{creator_of_prompt}`)\n'
+                                                    f'Создатель: {prompt_creator.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
                                                     f'Админы: {admins_of_prompt}', parse_mode=ParseMode.MARKDOWN)
         elif not prompt_in_db:
             prompts[data[0]] = {
@@ -517,7 +528,7 @@ async def addprompt(message: Message):
                 json.dump(prompts, f, ensure_ascii=False, indent=4)
             await message.reply(f'Промпт /{data[0]} добавлен')
             await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {admins[str(message.from_user.id)]} (`{message.from_user.id}`)\n'
+                                                    f'Создатель: {user.get_object().mention_markdown()} (`{message.from_user.id}`)\n'
                                                     'Админы: []', parse_mode=ParseMode.MARKDOWN)
         else:
             await message.reply('Это не твой промпт')
@@ -538,7 +549,7 @@ async def addprompt(message: Message):
                 json.dump(prompts, f, ensure_ascii=False, indent=4)
             await message.reply(f'Промпт /{data[0]} изменён')
             await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {admins[str(message.from_user.id)]} (`{message.from_user.id}`)\n'
+                                                    f'Создатель: {user.get_object().mention_markdown()} (`{message.from_user.id}`)\n'
                                                     f'Админы: {str(admins_of_prompt)}', parse_mode=ParseMode.MARKDOWN)
         else:
             await message.reply('Куда полез? Тебе сюда нельзя')
@@ -577,8 +588,8 @@ async def getprompt(message: Message):
         await message.reply('Такого промпта нет')
         return
     if prompt_creator == message.from_user.id or message.from_user.id == creator or message.from_user.id in prompt_admins:
-        with open('admins.json') as f:
-            admins = json.load(f)
+        with get_db() as db:
+            user = db.query(User).filter(User.id==message.from_user.id).first()
         command = key
         name = prompts[key]['name']
         description = prompts[key]['description']
@@ -588,8 +599,8 @@ async def getprompt(message: Message):
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data=f'del_{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
         await message.reply(f'/addprompt {command}|{name}|{description}|{prompt}\n\n'
-                            f'Создатель: {admins[str(creator_of_prompt)]} (`{creator_of_prompt}`)'
-                            f'Админы: {str(admins_of_prompt)}', reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+                            f'Создатель: {user.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
+                            f'Админы: {str(admins_of_prompt) if admins_of_prompt else 'отсутствуют'}', reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
     else:
         await message.reply('Куда полез? Тебе сюда нельзя')
 
@@ -606,8 +617,8 @@ async def gdelprompt(message: Message):
         await message.reply('Такого промпта нет')
         return
     if prompt_creator == message.from_user.id or message.from_user.id == creator:
-        with open('admins.json') as f:
-            admins = json.load(f)
+        with get_db() as db:
+            user = db.query(User).filter(User.id==message.from_user.id).first()
         command = prompt_command
         name = prompts[prompt_command]['name']
         description = prompts[prompt_command]['description']
@@ -615,45 +626,69 @@ async def gdelprompt(message: Message):
         creator_of_prompt = prompts[prompt_command]['creator']
         admins_of_prompt = prompts[prompt_command]['admins']
         await message.reply(f'/addprompt {command}|{name}|{description}|{prompt}\n\n'
-                            f'Создатель: {admins[str(creator_of_prompt)]} (`{creator_of_prompt}`)'
-                            f'Админы: {str(admins_of_prompt)}', parse_mode=ParseMode.MARKDOWN)
+                            f'Создатель: {user.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
+                            f'Админы: {str(admins_of_prompt) if admins_of_prompt else 'отсутствуют'}', parse_mode=ParseMode.MARKDOWN)
         btn1 = types.InlineKeyboardButton(text='Нет', callback_data=f'false_delprompt_{message.from_user.id}')
         btn2 = types.InlineKeyboardButton(text='Да',
                                           callback_data=f'true__delprompt__{prompt_command}__{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         await message.reply(f'Ты уверен?', reply_markup=markup)
     else:
-        await message.reply('Куда полез? Тебе сюда нельзя')
+        await message.reply('Куда полез? Тебе сюда нельзя.')
 
 
 @dp.message(Command(commands=['addadmin']))  # TODO: check
 async def addadmin(message: Message):
+    if is_banned(message.from_user.id):
+        await message.reply('Вы забанены.')
+        return
     data = message.text.replace('/addadmin ', '')
     data = data.replace('/addadmin@neuro_gemini_bot ', '')
     with open('prompts.json') as f:
         prompts = json.load(f)
-    with open('admins.json') as f:
-        admins = json.load(f)
-    if str(message.reply_to_message.from_user.id) in admins:
-        prompts[data]['admins'].append(message.reply_to_message.from_user.id)
+
+    with get_db() as db:
+        user = db.query(User).filter(User.id==message.from_user.id).first()
+        reply_user = db.query(User).filter(User.id==message.reply_to_message.from_user.id).first()
+
+    if message.from_user.id == creator or message.from_user.id == prompts[data]['creator']:
+        if reply_user.admin:
+            prompts[data]['admins'].append(message.reply_to_message.from_user.id)
+        else:
+            await message.reply('Целевой пользователь не админ.')
+            return
     else:
-        await message.reply('Ты не админ')
+        await message.reply('Ты не админ.')
         return
     with open('prompts.json', 'w') as f:
         json.dump(prompts, f)
-    await message.reply(f'Админ к /{data} добавлен')
+    await message.reply(f'Админ к /{data} добавлен.')
 
 
 @dp.message(Command(commands=['deladmin']))  # TODO: check
 async def deladmin(message: Message):
+    if is_banned(message.from_user.id):
+        await message.reply('Вы забанены.')
+        return
     data = message.text.replace('/deladmin ', '')
     data = data.replace('/deladmin@neuro_gemini_bot ', '')
     with open('prompts.json') as f:
         prompts = json.load(f)
-    prompts[data]['admins'].remove(message.reply_to_message.from_user.id)
+
+    with get_db() as db:
+        user = db.query(User).filter(User.id==message.from_user.id).first()
+        reply_user = db.query(User).filter(User.id==message.reply_to_message.from_user.id).first()
+
+    if message.from_user.id == creator or message.from_user.id == prompts[data]['creator']:
+        if reply_user.admin:
+            prompts[data]['admins'].remove(message.reply_to_message.from_user.id)
+        else:
+            await message.reply('Целевой пользователь не админ.')
+            return
+
     with open('prompts.json', 'w') as f:
         json.dump(prompts, f)
-    await message.reply(f'Админ к /{data} удалён')
+    await message.reply(f'Админ к /{data} удалён.')
 
 
 @dp.message(Command(commands=['myprompts']))
@@ -715,14 +750,23 @@ async def prompts(message: Message):
 @dp.message(Command(commands=['ban']))
 async def ban(message: Message):
     if message.from_user.id == creator:
-        user_id = message.reply_to_message.from_user.id
+        data = message.text.split()
+
+        if data[1]:
+            user_id = int(data[1])
+        else:
+            user_id = message.reply_to_message.from_user.id
 
         with get_db() as db:
+            user = db.get(User, user_id)
+            if not user:
+                new_user = User(id=user_id, object='{}')
+                db.add(new_user)
             user = db.get(User, user_id)
             user.banned = True
             db.commit()
 
-        await message.reply(f'{message.reply_to_message.from_user.first_name} забанен')
+        await message.reply('Пользователь забанен')
     else:
         await message.reply('Вы не админ')
 
@@ -730,14 +774,39 @@ async def ban(message: Message):
 @dp.message(Command(commands=['unban']))
 async def unban(message: Message):
     if message.from_user.id == creator:
-        user_id = message.reply_to_message.from_user.id
+        data = message.text.split()
+
+        if data[1]:
+            user_id = int(data[1])
+        else:
+            user_id = message.reply_to_message.from_user.id
 
         with get_db() as db:
             user = db.get(User, user_id)
             user.banned = False
             db.commit()
 
-        await message.reply(f'{message.reply_to_message.from_user.first_name} разбанен')
+        await message.reply('Пользователь разбанен')
+    else:
+        await message.reply('Вы не админ')
+
+
+@dp.message(Command(commands=['deluser']))
+async def deluser(message: Message):
+    if message.from_user.id == creator:
+        data = message.text.split()
+
+        if data[1]:
+            user_id = int(data[1])
+        else:
+            user_id = message.reply_to_message.from_user.id
+
+        with get_db() as db:
+            user = db.get(User, user_id)
+            db.delete(user)
+            db.commit()
+
+        await message.reply('Пользователь удалён')
     else:
         await message.reply('Вы не админ')
 
@@ -745,12 +814,13 @@ async def unban(message: Message):
 @dp.message(Command(commands=['admin']))
 async def admin(message: Message):
     if message.from_user.id == creator:
-        with open('admins.json') as f:
-            admins = json.load(f)
-        if message.reply_to_message.from_user.id not in admins:
-            admins[str(message.reply_to_message.from_user.id)] = message.reply_to_message.from_user.first_name
-        with open('admins.json', 'w') as f:
-            json.dump(admins, f)
+        user_id = message.reply_to_message.from_user.id
+
+        with get_db() as db:
+            user = db.get(User, user_id)
+            user.admin = True
+            db.commit()
+
         await message.reply(f'{message.reply_to_message.from_user.first_name} теперь админ')
     else:
         await message.reply('Вы не админ')
@@ -759,11 +829,13 @@ async def admin(message: Message):
 @dp.message(Command(commands=['unadmin']))
 async def unadmin(message: Message):
     if message.from_user.id == creator:
-        with open('admins.json') as f:
-            admins = json.load(f)
-        del admins[str(message.reply_to_message.from_user.id)]
-        with open('admins.json', 'w') as f:
-            json.dump(admins, f)
+        user_id = message.reply_to_message.from_user.id
+
+        with get_db() as db:
+            user = db.get(User, user_id)
+            user.admin = False
+            db.commit()
+
         await message.reply(f'{message.reply_to_message.from_user.first_name} больше не админ')
     else:
         await message.reply('Вы не админ')
@@ -772,11 +844,11 @@ async def unadmin(message: Message):
 @dp.message(Command(commands=['admins']))
 async def admins(message: Message):
     if message.from_user.id == creator:
-        with open('admins.json') as f:
-            admins = json.load(f)
+        with get_db() as db:
+            admins = db.query(User).filter(User.admin==True).all()
         admins_message = 'Админы:\n'
         for admin in admins:
-            admins_message += f'{admins[admin]} (`{admin}`)\n'
+            admins_message += f'{admin.get_object().mention_markdown()} (`{admin.id}`)\n'
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data=f'del_{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
         if admins_message == 'Админы:\n':
@@ -790,11 +862,11 @@ async def admins(message: Message):
 @dp.message(Command(commands=['bans']))
 async def bans(message: Message):
     if message.from_user.id == creator:
-        with open('bans.json') as f:
-            bans = json.load(f)
+        with get_db() as db:
+            bans = db.query(User).filter(User.banned==True).all()
         bans_message = 'Забаненные пользователи:\n'
         for ban in bans:
-            bans_message += f'{bans[ban]} (`{ban}`)\n'
+            bans_message += f'{ban.get_object().mention_markdown()} (`{ban.id}`)\n'
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data=f'del_{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
         if bans_message == 'Забаненные пользователи:\n':
@@ -818,7 +890,7 @@ async def restart(message: Message):
         await message.reply('Временно недоступно.')
 
 
-@dp.message(F.text.startswith('/'))  # TODO: in func
+@dp.message(F.text.startswith('/'))
 async def command_response(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -895,8 +967,8 @@ async def command_response(message: Message):
         photos = []
         if settings[str(message.from_user.id)]['pictures_in_dialog']:
             for prompt in response[0]:
-                request = generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
-                photos.append(types.InputMediaPhoto(media=request.text, caption=prompt))
+                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
             else:
@@ -904,7 +976,7 @@ async def command_response(message: Message):
         await wait_msg.delete()
 
 
-@dp.message(F.reply_to_message.from_user.id == 7487465375)  # TODO: in func
+@dp.message(F.reply_to_message.from_user.id == 7487465375)
 async def reply_response(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -933,12 +1005,9 @@ async def reply_response(message: Message):
         wait_msg = await message.reply('Думаю...')
         for key in keys:
             try:
-                print('dddddddddddddihogiuhkiouiiUGJUGFJHGFJ')
                 request = await gemini.gemini_gen(prompt, key, context, system_prompt)
-                print('KUGBBBBBBBbbbbbbbbbbbbbbbbbbbbbbBBKJHKJHGkJHGKJHGKHG')
                 break
             except Exception as e:
-                print('GOVNO                   '+e+'            GOVNO')
                 continue
         try:
             await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
@@ -980,8 +1049,8 @@ async def reply_response(message: Message):
         photos = []
         if settings[str(message.from_user.id)]['pictures_in_dialog']:
             for prompt in response[0]:
-                request = generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
-                photos.append(types.InputMediaPhoto(media=request.text, caption=prompt))
+                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 1:
                 await message.reply_photo(photos[0].media)
             else:
@@ -991,6 +1060,8 @@ async def reply_response(message: Message):
 
 @dp.callback_query()
 async def callback(call: CallbackQuery):
+    if is_banned(call.from_user.id):
+        await call.answer('Ты забанен.', show_alert=True)
     if call.data == 'delall_context':
         btn1 = types.InlineKeyboardButton(text='Нет', callback_data=f'false_delall_context_{call.from_user.id}')
         btn2 = types.InlineKeyboardButton(text='Да', callback_data=f'true_delall_context_{call.from_user.id}')
@@ -1058,8 +1129,8 @@ async def callback(call: CallbackQuery):
 
     elif call.data.startswith('true__delprompt__'):
         data = call.data.split('__')
-        with open('admins.json') as f:
-            admins = json.load(f)
+        with get_db() as db:
+            user = db.query(User).filter(User.id==call.from_user.id).first()
         if str(call.from_user.id) == data[3]:
             key = f'{data[2]}'
             with open('prompts.json') as f:
@@ -1071,7 +1142,7 @@ async def callback(call: CallbackQuery):
             await call.message.edit_text(f'Промпт /{key} удалён')
             await bot.send_message(prompts_channel,
                                    f'/addprompt {key}|{prompt["name"]}|{prompt["description"]}|{prompt["prompt"]}\n\n'
-                                   f'Создатель: {admins[str(prompt["creator"])]} (`{prompt["creator"]}`)\n'
+                                   f'Создатель: {user.get_object().mention_markdown()} (`{prompt["creator"]}`)\n'
                                    f'Админы: {prompt["admins"]}', parse_mode=ParseMode.MARKDOWN)
         else:
             await call.answer('Отставить! Это не твоя кнопка!')
