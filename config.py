@@ -1,15 +1,18 @@
-# config.py
+import dotenv
+import os
+
+dotenv.load_dotenv()
 
 class Config:
     # Токен бота
-    BOT_TOKEN = "7487465375:AAHCiPV8G0XU5lvhxIFQWPsnSI3O8ontWzw"
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
 
     # ID чатов
-    CREATOR = 7561325825  # ID создателя бота
-    PROMPTS_CHANNEL = -1002326305124  # ID канала для промптов
-    LOG_CHAT = -1002309109516  # ID лог-чата
-    SUPPORT_CHAT = -1002273538234  # ID чата поддержки
-    MAIN_CHAT = None  # Основной чат (если есть)
+    CREATOR = os.getenv('CREATOR') or 7561325825  # ID создателя бота
+    PROMPTS_CHANNEL = os.getenv('PROMPTS_CHANNEL') or -1002326305124  # ID канала для промптов
+    LOG_CHAT = os.getenv('LOG_CHAT') or -1002309109516  # ID лог-чата
+    SUPPORT_CHAT = os.getenv('SUPPORT_CHAT') or -1002273538234  # ID чата поддержки
+    MAIN_CHAT = os.getenv('MAIN_CHAT') or None  # Основной чат (если есть)
 
     # Настройки безопасности для Google Generative AI
     SAFETY_SETTINGS = [
@@ -40,4 +43,4 @@ class Config:
     }
 
     # Параметры базы данных
-    DB_FILE = "neuro_db.sqlite"
+    DB_FILE = os.getenv('DB_FILE') or "neuro_db.sqlite"

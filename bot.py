@@ -25,6 +25,7 @@ import aiohttp
 from ai import gemini
 from db import get_db, create_tables
 from db.user import User
+from db.api_key import APIKey
 
 create_tables()
 
@@ -228,22 +229,18 @@ async def start(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        with get_db() as db:  # Получаем сессию базы данных
+        with get_db() as db:
             user_id = message.from_user.id
 
-            # Проверяем, существует ли пользователь с таким id
             existing_user = db.query(User).filter(User.id == user_id).first()
 
             if existing_user:
-                # Если пользователь уже существует, обновляем его данные
                 existing_user.set_object(message.from_user)
             else:
-                # Если пользователя нет, создаем нового
                 new_user = User(id=user_id)
                 new_user.set_object(message.from_user)
                 db.add(new_user)
 
-            # Фиксируем изменения в базе данных
             db.commit()
         with open('settings.json') as f:
             settings = json.load(f)
@@ -438,9 +435,7 @@ async def unicode(message: Message):
         await message.reply('Вы забанены.')
     else:
         await message.reply('Эта функция предоставляет символы Unicode (их могут использовать админы для создания ASCII'
-                            '-картинок или кастомизированных меню в своих промптах), отобранные из '
-                            'https://unicode-table.com/ru/ и приложения "Таблица символов" (ОС Windows) создетелем бота'
-                            ', а также предложенные пользователями по команде /send:\n'
+                            '-картинок или кастомизированных меню в своих промптах):\n'
                             '֎ ֍ \n█ ▓ ▒ ░ ▄ ▀ ▌ ▐ \n■ □ ▬ ▲ ► ▼ ◄ \n◊ ○ ◌ ● ◘ ◙ ◦ ☻ \n☼ ♀ ♂ ♪ ♫ ♯ \n'
                             '┌─┬┐  ╒═╤╕\n│ ││  │ ││\n├─┼┤  ╞═╪╡\n└─┴┘  ╘═╧╛\n╓─╥╖  ╔═╦╗\n║ ║║  ║ ║║\n╟─╫╢  ╠═╬╣\n'
                             '╙─╨╜  ╚═╩╝\nΩ ₪ ← ↑ → ↓ ∆ ∏ ∑ \n√ ∞ ∟ ∩ ≈ ≠ ≡ ≤ ≥ ⌂ ⌐ \n➀➁➂➃➄➅➆➇➈➉\n⓿❶❷❸❹❺❻❼❽❾❿\n'
@@ -460,6 +455,10 @@ async def addkey(message: Message):
         keys.append(data)
         with open('keys.json', 'w') as f:
             json.dump(keys, f, ensure_ascii=False, indent=4)
+        with get_db() as db:
+            key = APIKey(key=data, creator=message.from_user.id)
+            db.add(key)
+            db.commit()
         await message.reply('Ключ добавлен.')
     except Exception as e:
         await message.reply(f'Ключ неактивен. Попробуйте снова чуть позже. \nОшибка: {e}')
@@ -470,11 +469,11 @@ async def test(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
         return
-    with open('keys.json') as f:
-        keys = json.load(f)
+    with get_db() as db:
+        keys = db.query(APIKey).all()
     for key in keys:
         try:
-            response = await gemini.gemini_gen('Привет!', key)
+            response = await gemini.gemini_gen('Привет!', key.key)
             await message.reply(response)
             return
         except Exception as e:
@@ -944,15 +943,15 @@ async def command_response(message: Message):
             system_prompt = read_telegraph(prompts[command]['prompt'])
         except KeyError:
             return
-        with open('keys.json') as f:
-            keys = json.load(f)
+        with get_db() as db:
+            keys = db.query(APIKey).all()
         wait_msg = await message.reply('Думаю...')
         if f'{message.from_user.id}-{command}' not in contexts:
             contexts[f'{message.from_user.id}-{command}'] = []
         context = contexts[f'{message.from_user.id}-{command}']
         for key in keys:
             try:
-                request = await gemini.gemini_gen(prompt, key, context, system_prompt)
+                request = await gemini.gemini_gen(prompt, key.key, context, system_prompt)
                 break
             except Exception as e:
                 continue
@@ -1002,7 +1001,9 @@ async def command_response(message: Message):
             for prompt in response[0]:
                 request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
-            if len(photos) == 1:
+            if len(photos) == 0:
+                pass
+            elif len(photos) == 1:
                 await message.reply_photo(photos[0].media)
             else:
                 await message.reply_media_group(photos)
@@ -1033,12 +1034,12 @@ async def reply_response(message: Message):
             contexts[f'{message.from_user.id}-{command}'] = []
         context = contexts[f'{message.from_user.id}-{command}']
         system_prompt = read_telegraph(prompts[command]['prompt'])
-        with open('keys.json') as f:
-            keys = json.load(f)
+        with get_db() as db:
+            keys = db.query(APIKey).all()
         wait_msg = await message.reply('Думаю...')
         for key in keys:
             try:
-                request = await gemini.gemini_gen(prompt, key, context, system_prompt)
+                request = await gemini.gemini_gen(prompt, key.key, context, system_prompt)
                 break
             except Exception as e:
                 continue
@@ -1084,7 +1085,9 @@ async def reply_response(message: Message):
             for prompt in response[0]:
                 request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
-            if len(photos) == 1:
+            if len(photos) == 0:
+                pass
+            elif len(photos) == 1:
                 await message.reply_photo(photos[0].media)
             else:
                 await message.reply_media_group(photos)
