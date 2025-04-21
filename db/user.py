@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy.sql import func
 from . import Base
 import json
 from aiogram import types
@@ -10,6 +11,8 @@ class User(Base):
     banned = Column(Boolean, default=False)
     admin = Column(Boolean, default=False)
     object = Column(String)
+    settings = Column(String, default="{'reset': True, 'pictures_in_dialog': True, 'pictures_count': 5, 'imageai': 'sd'}")
+    created_at = Column(DateTime, default=func.now())
 
     def get_object(self) -> types.User:
         data = json.loads(self.object)

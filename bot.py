@@ -16,7 +16,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery
 from bs4 import BeautifulSoup
-from google.generativeai.types import FunctionLibrary, FunctionDeclaration
 
 from funcs_for_resp import *
 import generate
@@ -188,6 +187,40 @@ def sets_msg(id):
            f'Количество картинок: {settings[str(id)]["pictures_count"]}\n'
            f'Нейросеть для генерации картинок в диалоге: {settings[str(id)]["imageai"]}')
     return msg, markup
+
+
+def split_message(text):
+    max_len = 4096
+    if len(text) <= max_len:
+        return [text]
+    
+    messages = []
+    current_message = ''
+    words = text.split()
+    
+    for word in words:
+        if len(current_message) + len(word) + 1 <= max_len:
+            if current_message:
+                current_message += ' '
+            current_message += word
+        else:
+            # Если текущее слово превышает max_len, разбиваем его на части
+            if len(word) > max_len:
+                for i in range(0, len(word), max_len):
+                    part = word[i:i + max_len]
+                    if current_message:
+                        messages.append(current_message)
+                        current_message = part
+                    else:
+                        messages.append(part)
+            else:
+                messages.append(current_message)
+                current_message = word
+    
+    if current_message:
+        messages.append(current_message)
+    
+    return messages
 
 
 @dp.message(Command(commands=['start']))
