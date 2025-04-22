@@ -9,7 +9,7 @@ class Prompt(Base):
     name = Column(String)
     description = Column(Text)
     content = Column(Text)
-    creator_id = Column(Integer)
+    author = Column(Integer)
     admins = Column(String, default='[]')
     message_ids = Column(String, default='[]')
     groups = Column(tring, default='[]')

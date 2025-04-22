@@ -64,7 +64,7 @@ class MessageToAdmin(StatesGroup):
     text_message = State('text_message')
 
 
-class Permissions(str, Enum):  # TODO: work
+class Permissions(str, Enum):
     CREATE_PROMPTS = 'create_prompts'
     BAN_USERS = 'ban_users'
     ADMIN_USERS = 'admin_users'
@@ -139,8 +139,13 @@ def default_sets(id):  # TODO: work
     pass
 
 
-def is_user(id):  # TODO: work
-    pass
+def is_user(id):
+    with get_db() as db:
+        user = db.query(User).filter_by(id=id).first()
+        if user:
+            return True
+        else:
+            return False
 
 
 def sets_msg(id):
@@ -340,7 +345,7 @@ async def help(message: Message):
         await message.reply(help_message)
 
 
-@dp.message(Command(commands=['settings']))  # TODO: fix, check and work
+@dp.message(Command(commands=['settings']))
 async def settings(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -349,7 +354,7 @@ async def settings(message: Message):
         await message.reply(msg[0], reply_markup=msg[1])
 
 
-@dp.message(Command(commands=['stats']))  # TODO: work
+@dp.message(Command(commands=['stats']))
 async def stats(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -374,7 +379,7 @@ async def stats(message: Message):
             f'Статистика:\n\nПромпты: {prompts_count}\nБаны: {bans_count}\nАдмины: {admins_count}\nПользователи: {users_count}')
 
 
-@dp.message(Command(commands=['profile']))  # TODO: work
+@dp.message(Command(commands=['profile']))
 async def profile(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -391,7 +396,7 @@ async def profile(message: Message):
                             parse_mode=ParseMode.HTML)
 
 
-@dp.message(Command(commands=['your_profile']))  # TODO: work with `profile()`
+@dp.message(Command(commands=['your_profile']))
 async def your_profile(message: Message):
     if message.from_user.id == creator:
         with get_db() as db:
@@ -669,7 +674,7 @@ async def gdelprompt(message: Message):
         await message.reply('Куда полез? Тебе сюда нельзя.')
 
 
-@dp.message(Command(commands=['addadmin']))  # TODO: check
+@dp.message(Command(commands=['addadmin']))
 async def addadmin(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -697,7 +702,7 @@ async def addadmin(message: Message):
     await message.reply(f'Админ к /{data} добавлен.')
 
 
-@dp.message(Command(commands=['deladmin']))  # TODO: check
+@dp.message(Command(commands=['deladmin']))
 async def deladmin(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
@@ -752,7 +757,7 @@ async def yourprompts(message: Message):
             await message.reply(f'У {message.reply_to_message.from_user.first_name} нет ни одного созданного промпта')
 
 
-@dp.message(Command(commands=['prompts']))  # TODO: check
+@dp.message(Command(commands=['prompts']))
 async def prompts(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
