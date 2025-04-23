@@ -26,6 +26,7 @@ from ai import gemini
 from db import get_db, create_tables
 from db.user import User
 from db.api_key import APIKey
+from utils.prompts import add_or_update_prompt
 
 create_tables()
 
@@ -93,11 +94,11 @@ def find_strings():  # TODO: handle other strings but a `find_draw_strings()`
 def find_prompt(text):
     data = text.replace('/addprompt ', '')
     data = data.replace('/addprompt@neuro_gemini_bot ', '')
-    data = data.split('|')
+    data = data.split('|', maxsplit=4)
     command = data[0]
     name = data[1]
     description = data[2]
-    prompt = "|".join(data[3:])
+    prompt = data[3]
     return command, name, description, prompt
 
 
@@ -589,7 +590,49 @@ async def addprompt(message: Message):
                                                     f'Создатель: {user.get_object().mention_markdown()} (`{message.from_user.id}`)\n'
                                                     f'Админы: {str(admins_of_prompt)}', parse_mode=ParseMode.MARKDOWN)
         else:
-            await message.reply('Куда полез? Тебе сюда нельзя')
+            await message.reply('Куда полез? Тебе сюда нельзя.')
+
+
+@dp.message(Command(commands=['addprompt']))
+async def addprompt(message: Message):
+    with get_db() as db:
+        user = db.query(User).filter(User.id==message.from_user.id).first()
+        data = find_prompt(message.text)
+        prompt = db.query(Prompt).filter_by(command=data[0])
+        prompt_admins = json.loads(prompt.admins)
+        prompt_creator = db.query(User).filter_by(id=prompt.author)
+
+    if user.admin == True or message.from_user.id == creator:
+        if prompt.author == message.from_user.id or message.from_user.id == creator or message.from_user.id in prompt_admins:
+            status = add_or_update_prompt(data[0], data[1], data[2], data[3])
+            with get_db() as db:
+                prompt = db.query(Prompt).filter_by(command=data[0])
+                prompt_admins = json.loads(prompt.admins)
+                prompt_creator = db.query(User).filter_by(id=prompt.author)
+        else:
+            await message.reply('Куда полез? Тебе сюда нельзя.')
+            return
+
+        if status == True:
+            await message.reply(f'Промпт /{data[0]} изменён.')
+        else:
+            await message.reply(f'Промпт /{data[0]} добавлен.')
+    
+    else:
+        if prompt.author == message.from_user.id or message.from_user.id in prompt_admins:
+            status = add_or_update_prompt(data[0], data[1], data[2], data[3])
+            with get_db() as db:
+                prompt = db.query(Prompt).filter_by(command=data[0])
+                prompt_admins = json.loads(prompt.admins)
+                prompt_creator = db.query(User).filter_by(id=prompt.author)
+            await message.reply(f'Промпт /{data[0]} изменён.')
+        else:
+            await message.reply('Куда полез? Тебе сюда нельзя.')
+            return
+
+    await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
+                                            f'Создатель: {prompt_creator.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
+                                            f'Админы: {prompt_admins}', parse_mode=ParseMode.MARKDOWN)
 
 
 @dp.message(Command(commands=['delprompt']))

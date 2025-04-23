@@ -12,4 +12,4 @@ class Prompt(Base):
     author = Column(Integer)
     admins = Column(String, default='[]')
     message_ids = Column(String, default='[]')
-    groups = Column(tring, default='[]')
+    groups = Column(String, default='[]')

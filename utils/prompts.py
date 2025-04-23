@@ -8,9 +8,11 @@ def add_or_update_prompt(command, name, description, content, author):
             prompt.name = name
             prompt.description = description
             prompt.content = content
+            yield True
         else:
             prompt = Prompt(command=command, name=name, description=description, content=content, author=author)
             db.add(prompt)
+            yield False
         db.commit()
 
 def del_prompt(command):
