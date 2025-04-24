@@ -4,6 +4,7 @@ import math
 import os
 import re
 from enum import Enum
+import io
 
 import aiogram
 import google.generativeai as genai
@@ -452,15 +453,10 @@ async def unicode(message: Message):
 
 @dp.message(Command(commands=['addkey']))
 async def addkey(message: Message):
-    with open('keys.json') as f:
-        keys = json.load(f)
     data = message.text.replace('/addkey ', '')
     data = data.replace('/addkey@neuro_gemini_bot ', '')
     try:
         await gemini.gemini_gen('hi', data)
-        keys.append(data)
-        with open('keys.json', 'w') as f:
-            json.dump(keys, f, ensure_ascii=False, indent=4)
         with get_db() as db:
             key = APIKey(key=data, creator=message.from_user.id)
             db.add(key)
@@ -1140,6 +1136,36 @@ async def reply_response(message: Message):
             else:
                 await message.reply_media_group(photos)
         await wait_msg.delete()
+
+# TODO: вынести в отдельную функцию  использовать в обработчиках
+'''@dp.message(F.photo)
+async def photo_response(message: Message):
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    file = await bot.get_file(file_id)
+    file_path = file.file_path
+    buffer = io.BytesIO()
+    buffer.seek(0)
+    await bot.download_file(file_path, buffer)
+
+    with get_db() as db:
+        keys = db.query(APIKey).all()
+    wait_msg = await message.reply('Думаю...')
+    for key in keys:
+        try:
+            request = await gemini.gemini_gen('Опиши картинку подробно.', key.key, image_bytes_io=buffer)
+            break
+        except Exception as e:
+            print(e)
+            continue
+    try:
+        await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
+        await wait_msg.delete()
+        return
+    except:
+        pass
+    await message.reply(request)
+    buffer.close()'''
 
 
 @dp.callback_query()

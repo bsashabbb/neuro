@@ -8,7 +8,7 @@ async def gemini_gen(
     api_key: str,
     context: Optional[List[Dict]] = None,
     system_instruction: Optional[str] = None,
-    image_path: Optional[str] = None,
+    image_bytes_io = None,
     model_name: str = "gemini-2.0-flash-exp"
 ) -> str:
     """
@@ -22,15 +22,13 @@ async def gemini_gen(
     # Формирование тела запроса
     content_parts = [{"text": user_prompt}]
     
-    if image_path:
-        # Асинхронное чтение и кодирование изображения
-        async with httpx.AsyncClient() as client:
-            image_data = await client.read_file(image_path)
+    if image_bytes_io:
+        # Считываем данные из буфера
+        image_data = image_bytes_io.read()
         
-        mime_type, _ = mimetypes.guess_type(image_path)
-        if not mime_type or mime_type not in ['image/jpeg', 'image/png', 'image/webp', 'image/heic']:
-            mime_type = 'image/jpeg'
+        mime_type = 'image/jpeg'
         
+        # Добавляем данные изображения в контент
         content_parts.append({
             "inline_data": {
                 "mime_type": mime_type,
