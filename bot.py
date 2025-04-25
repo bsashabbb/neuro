@@ -595,7 +595,6 @@ async def addprompt(message: Message):
     with get_db() as db:
         user = db.query(User).filter(User.id==message.from_user.id).first()
         data = find_prompt(message.text)
-        print(data)
         prompt = db.query(Prompt).filter_by(command=data[0]).first()
         if prompt:
             prompt_admins = json.loads(prompt.admins)
@@ -616,6 +615,9 @@ async def addprompt(message: Message):
                     prompt = db.query(Prompt).filter_by(command=data[0]).first()
                     prompt_admins = json.loads(prompt.admins)
                     prompt_creator = db.query(User).filter_by(id=prompt.author).first()
+            else:
+                await message.reply('Куда полез? Тебе сюда нельзя.')
+                return
 
         elif user.admin and not prompt:
             status = add_or_update_prompt(data[0], data[1], data[2], data[3], message.from_user.id)
@@ -650,7 +652,7 @@ async def addprompt(message: Message):
             return
 
     await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                            f'Создатель: {prompt_creator.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
+                                            f'Создатель: {prompt_creator.get_object().mention_markdown()} (`{prompt_creator.id}`)\n'
                                             f'Админы: {prompt_admins}', parse_mode=ParseMode.MARKDOWN)
 
 
@@ -965,7 +967,7 @@ async def bans(message: Message):
             bans = db.query(User).filter(User.banned==True).all()
         bans_message = 'Забаненные пользователи:\n'
         for ban in bans:
-            bans_message += f'{ban.get_object().mention_markdown()} (`{ban.id}`)\n'
+            bans_message += f'{ban.get_object().mention_markdown() if ban.object != '{}' else 'Имя отсутствует'} (`{ban.id}`)\n'
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data=f'del_{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
         if bans_message == 'Забаненные пользователи:\n':
