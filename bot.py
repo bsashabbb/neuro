@@ -514,82 +514,6 @@ async def message_to_admin(message: Message, state: FSMContext):
             await message.forward(support_chat)
 
 
-'''@dp.message(Command(commands=['addprompt']))
-async def addprompt(message: Message):
-    with get_db() as db:
-        user = db.query(User).filter(User.id==message.from_user.id).first()
-    if user.admin == True or message.from_user.id == creator:
-        data = find_prompt(message.text)
-        with open('prompts.json') as f:
-            prompts = json.load(f)
-        if data[0] in prompts:
-            prompt_in_db = True
-            if prompts[data[0]][
-                'creator'] == message.from_user.id or message.from_user.id == creator or message.from_user.id in \
-                    prompts[data[0]]['admins']:
-                user_prompt_admin = True
-            else:
-                user_prompt_admin = False
-        else:
-            prompt_in_db = False
-            user_prompt_admin = False
-        if prompt_in_db and user_prompt_admin:
-            creator_of_prompt = prompts[data[0]]['creator']
-            admins_of_prompt = prompts[data[0]]['admins']
-            prompts[data[0]] = {
-                'name': data[1],
-                'description': data[2],
-                'prompt': data[3],
-                'creator': creator_of_prompt,
-                'admins': admins_of_prompt
-            }
-            with open('prompts.json', 'w') as f:
-                json.dump(prompts, f, ensure_ascii=False, indent=4)
-            await message.reply(f'Промпт /{data[0]} изменён')
-            with get_db() as db:
-                prompt_creator = db.query(User).filter(User.id==creator_of_prompt).first()
-            await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {prompt_creator.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
-                                                    f'Админы: {admins_of_prompt}', parse_mode=ParseMode.MARKDOWN)
-        elif not prompt_in_db:
-            prompts[data[0]] = {
-                'name': data[1],
-                'description': data[2],
-                'prompt': data[3],
-                'creator': message.from_user.id,
-                'admins': []
-            }
-            with open('prompts.json', 'w') as f:
-                json.dump(prompts, f, ensure_ascii=False, indent=4)
-            await message.reply(f'Промпт /{data[0]} добавлен')
-            await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {user.get_object().mention_markdown()} (`{message.from_user.id}`)\n'
-                                                    'Админы: []', parse_mode=ParseMode.MARKDOWN)
-        else:
-            await message.reply('Это не твой промпт')
-    else:
-        data = find_prompt(message.text)
-        with open('prompts.json') as f:
-            prompts = json.load(f)
-        if prompts[data[0]]['creator'] == message.from_user.id:
-            admins_of_prompt = prompts[data[0]]['admins']
-            prompts[data[0]] = {
-                'name': data[1],
-                'description': data[2],
-                'prompt': data[3],
-                'creator': message.from_user.id,
-                'admins': admins_of_prompt
-            }
-            with open('prompts.json', 'w') as f:
-                json.dump(prompts, f, ensure_ascii=False, indent=4)
-            await message.reply(f'Промпт /{data[0]} изменён')
-            await bot.send_message(prompts_channel, f'/addprompt {data[0]}|{data[1]}|{data[2]}|{data[3]}\n\n'
-                                                    f'Создатель: {user.get_object().mention_markdown()} (`{message.from_user.id}`)\n'
-                                                    f'Админы: {str(admins_of_prompt)}', parse_mode=ParseMode.MARKDOWN)
-        else:
-            await message.reply('Куда полез? Тебе сюда нельзя.')'''
-
-
 @dp.message(Command(commands=['addprompt']))
 async def addprompt(message: Message):
     with get_db() as db:
@@ -658,13 +582,15 @@ async def addprompt(message: Message):
 
 @dp.message(Command(commands=['delprompt']))
 async def delprompt(message: Message):
-    prompt = message.text.replace('/delprompt ', '')
-    prompt = prompt.replace('/delprompt@neuro_gemini_bot ', '')
+    command = message.text.replace('/delprompt ', '')
+    command = command.replace('/delprompt@neuro_gemini_bot ', '')
     with open('prompts.json') as f:
         prompts = json.load(f)
+    with get_db() as db:
+        prompt = db.query(Prompt).filter_by(command=command).first()
     try:
-        prompt_creator = prompts[prompt]['creator']
-    except KeyError:
+        prompt_creator = prompt.author
+    except AttributeError:
         await message.reply('Такого промпта нет')
         return
     if prompt_creator == message.from_user.id or message.from_user.id == creator:
@@ -1264,21 +1190,16 @@ async def callback(call: CallbackQuery):
 
     elif call.data.startswith('true__delprompt__'):
         data = call.data.split('__')
-        with get_db() as db:
-            user = db.query(User).filter(User.id==call.from_user.id).first()
         if str(call.from_user.id) == data[3]:
-            key = f'{data[2]}'
-            with open('prompts.json') as f:
-                prompts = json.load(f)
-            prompt = prompts[key]
-            del prompts[key]
-            with open('prompts.json', 'w') as f:
-                json.dump(prompts, f, ensure_ascii=False, indent=4)
-            await call.message.edit_text(f'Промпт /{key} удалён')
+            with get_db() as db:
+                user = db.query(User).filter(User.id==call.from_user.id).first()
+                prompt = db.query(Prompt).filter_by(command=data[2]).first()
+                db.delete(prompt)
+            await call.message.edit_text(f'Промпт /{key} удалён.')
             await bot.send_message(prompts_channel,
-                                   f'/addprompt {key}|{prompt["name"]}|{prompt["description"]}|{prompt["prompt"]}\n\n'
-                                   f'Создатель: {user.get_object().mention_markdown()} (`{prompt["creator"]}`)\n'
-                                   f'Админы: {prompt["admins"]}', parse_mode=ParseMode.MARKDOWN)
+                                   f'/addprompt {prompt.command}|{prompt.name}|{prompt.description}|{prompt.content}\n\n'
+                                   f'Создатель: {user.get_object().mention_markdown()} (`{prompt.creator}`)\n'
+                                   f'Админы: {prompt.admins}', parse_mode=ParseMode.MARKDOWN)
         else:
             await call.answer('Отставить! Это не твоя кнопка!')
 
