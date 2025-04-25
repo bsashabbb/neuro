@@ -1,7 +1,7 @@
 from db import get_db
 from db.prompt import Prompt
 
-def add_or_update_prompt(command, name, description, content, author):
+def add_or_update_prompt(command, name, description, content, author=None):
     with get_db() as db:
         prompt = db.query(Prompt).filter_by(command=command).first()
         if prompt:

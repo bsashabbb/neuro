@@ -8,11 +8,11 @@ class Config:
     BOT_TOKEN = os.getenv('BOT_TOKEN')
 
     # ID чатов
-    CREATOR = os.getenv('CREATOR') or 7561325825  # ID создателя бота
-    PROMPTS_CHANNEL = os.getenv('PROMPTS_CHANNEL') or -1002326305124  # ID канала для промптов
-    LOG_CHAT = os.getenv('LOG_CHAT') or -1002309109516  # ID лог-чата
-    SUPPORT_CHAT = os.getenv('SUPPORT_CHAT') or -1002273538234  # ID чата поддержки
-    MAIN_CHAT = os.getenv('MAIN_CHAT') or None  # Основной чат (если есть)
+    CREATOR = int(os.getenv('CREATOR', 7561325825))  # ID создателя бота
+    PROMPTS_CHANNEL = int(os.getenv('PROMPTS_CHANNEL', -1002326305124))  # ID канала для промптов
+    LOG_CHAT = int(os.getenv('LOG_CHAT', -1002309109516))  # ID лог-чата
+    SUPPORT_CHAT = int(os.getenv('SUPPORT_CHAT', -1002273538234))  # ID чата поддержки
+    MAIN_CHAT = int(os.getenv('MAIN_CHAT', -1002318702468))  # Основной чат (если есть)
 
     # Настройки безопасности для Google Generative AI
     SAFETY_SETTINGS = [
