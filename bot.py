@@ -232,6 +232,18 @@ def split_message(text):
     return messages
 
 
+async def prompt_string(command):
+    with get_db() as db:
+        prompt = db.query(Prompt).filter_by(command=command).first()
+        author = db.query(User).filter_by(id=prompt.author).first()
+        prompt_admins = ''
+        for prompt_admin in json.loads(prompt.admins):
+            prompt_admins += f'{db.query(User).filter_by(id=prompt_admin).first().get_object().mention_markdown()} (`{prompt_admin}`)'
+    return (f'`/addprompt {prompt.command}|{prompt.name}|{prompt.description}|{prompt.content}`\n\n'
+        f'Создатель: {author.get_object().mention_markdown()} (`{prompt.author}`)\n'
+        f'Админы: {prompt_admins if prompt_admins else 'отсутствуют'}')
+
+
 @dp.message(Command(commands=['start']))
 async def start(message: Message):
     if is_banned(message.from_user.id):
@@ -595,7 +607,7 @@ async def delprompt(message: Message):
         return
     if prompt_creator == message.from_user.id or message.from_user.id == creator:
         btn1 = types.InlineKeyboardButton(text='Нет', callback_data=f'false_delprompt_{message.from_user.id}')
-        btn2 = types.InlineKeyboardButton(text='Да', callback_data=f'true__delprompt__{prompt}__{message.from_user.id}')
+        btn2 = types.InlineKeyboardButton(text='Да', callback_data=f'true__delprompt__{prompt.command}__{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         await message.reply(f'Ты уверен?', reply_markup=markup)
     else:
@@ -606,28 +618,16 @@ async def delprompt(message: Message):
 async def getprompt(message: Message):
     key = message.text.replace('/getprompt ', '')
     key = key.replace('/getprompt@neuro_gemini_bot ', '')
-    with open('prompts.json') as f:
-        prompts = json.load(f)
-    try:
-        prompt_creator = prompts[key]['creator']
-        prompt_admins = prompts[key]['admins']
-    except KeyError:
+    with get_db() as db:
+        prompt = db.query(Prompt).filter_by(command=key).first()
+    if not prompt:
         await message.reply('Такого промпта нет')
         return
-    if prompt_creator == message.from_user.id or message.from_user.id == creator or message.from_user.id in prompt_admins:
-        with get_db() as db:
-            user = db.query(User).filter(User.id==message.from_user.id).first()
-        command = key
-        name = prompts[key]['name']
-        description = prompts[key]['description']
-        prompt = prompts[key]['prompt']
-        creator_of_prompt = prompts[key]['creator']
-        admins_of_prompt = prompts[key]['admins']
+    if prompt.author == message.from_user.id or message.from_user.id == creator or message.from_user.id in json.loads(prompt.admins):
+        string = await prompt_string(key)
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data=f'del_{message.from_user.id}')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
-        await message.reply(f'/addprompt {command}|{name}|{description}|{prompt}\n\n'
-                            f'Создатель: {user.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
-                            f'Админы: {str(admins_of_prompt) if admins_of_prompt else 'отсутствуют'}', reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+        await message.reply(string, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
     else:
         await message.reply('Куда полез? Тебе сюда нельзя')
 
@@ -636,25 +636,16 @@ async def getprompt(message: Message):
 async def gdelprompt(message: Message):
     prompt_command = message.text.replace('/gdelprompt ', '')
     prompt_command = prompt_command.replace('/gdelprompt@neuro_gemini_bot ', '')
-    with open('prompts.json') as f:
-        prompts = json.load(f)
-    try:
-        prompt_creator = prompts[prompt_command]['creator']
-    except KeyError:
+    with get_db() as db:
+        prompt = db.query(Prompt).filter_by(command=prompt_command).first()
+    if not prompt:
         await message.reply('Такого промпта нет')
         return
-    if prompt_creator == message.from_user.id or message.from_user.id == creator:
+    if prompt.author == message.from_user.id or message.from_user.id == creator:
         with get_db() as db:
             user = db.query(User).filter(User.id==message.from_user.id).first()
-        command = prompt_command
-        name = prompts[prompt_command]['name']
-        description = prompts[prompt_command]['description']
-        prompt = prompts[prompt_command]['prompt']
-        creator_of_prompt = prompts[prompt_command]['creator']
-        admins_of_prompt = prompts[prompt_command]['admins']
-        await message.reply(f'/addprompt {command}|{name}|{description}|{prompt}\n\n'
-                            f'Создатель: {user.get_object().mention_markdown()} (`{creator_of_prompt}`)\n'
-                            f'Админы: {str(admins_of_prompt) if admins_of_prompt else 'отсутствуют'}', parse_mode=ParseMode.MARKDOWN)
+        string = await prompt_string(prompt_command)
+        await message.reply(string, parse_mode=ParseMode.MARKDOWN)
         btn1 = types.InlineKeyboardButton(text='Нет', callback_data=f'false_delprompt_{message.from_user.id}')
         btn2 = types.InlineKeyboardButton(text='Да',
                                           callback_data=f'true__delprompt__{prompt_command}__{message.from_user.id}')
@@ -1195,11 +1186,8 @@ async def callback(call: CallbackQuery):
                 user = db.query(User).filter(User.id==call.from_user.id).first()
                 prompt = db.query(Prompt).filter_by(command=data[2]).first()
                 db.delete(prompt)
-            await call.message.edit_text(f'Промпт /{key} удалён.')
-            await bot.send_message(prompts_channel,
-                                   f'/addprompt {prompt.command}|{prompt.name}|{prompt.description}|{prompt.content}\n\n'
-                                   f'Создатель: {user.get_object().mention_markdown()} (`{prompt.creator}`)\n'
-                                   f'Админы: {prompt.admins}', parse_mode=ParseMode.MARKDOWN)
+            await call.message.edit_text(f'Промпт /{prompt.command} удалён.')
+            await bot.send_message(prompts_channel, await prompt_string(data[2]), parse_mode=ParseMode.MARKDOWN)
         else:
             await call.answer('Отставить! Это не твоя кнопка!')
 

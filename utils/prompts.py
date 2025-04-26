@@ -16,9 +16,3 @@ def add_or_update_prompt(command, name, description, content, author=None):
         db.commit()
         db.refresh(prompt)
     return status
-
-def del_prompt(command):
-    with get_db() as db:
-        prompt = db.query(Prompt).filter_by(command=command).first()
-        db.delete(prompt)
-        db.commit()
