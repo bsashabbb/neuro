@@ -343,7 +343,7 @@ async def help(message: Message):
     else:
         help_message = ('Команды:\n/start - начать\n/online - онлайн\n/sd <запрос> - cгенерировать картинку в SD\n'
                         '/prompts - список промптов\n/reset - очистить контекст\n/help - помощь\n/settings - настройки'
-                        '\n/unicode - посмотреть символы unicode\n/send - отправить сообщение админу\n/stats - '
+                        '\n/unicode - посмотреть символы unicode\n/support - отправить сообщение админу\n/stats - '
                         'статистика\n/profile - профиль')
         with get_db() as db:
             admin = db.query(User).filter(User.admin==True, User.id==message.from_user.id).first()
