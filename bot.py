@@ -1258,36 +1258,6 @@ async def reply_response(message: Message):
             else:
                 await message.reply_media_group(photos)
 
-# TODO: вынести в отдельную функцию  использовать в обработчиках
-'''@dp.message(F.photo)
-async def photo_response(message: Message):
-    photo = message.photo[-1]
-    file_id = photo.file_id
-    file = await bot.get_file(file_id)
-    file_path = file.file_path
-    buffer = io.BytesIO()
-    buffer.seek(0)
-    await bot.download_file(file_path, buffer)
-
-    with get_db() as db:
-        keys = db.query(APIKey).all()
-    wait_msg = await message.reply('Думаю...')
-    for key in keys:
-        try:
-            request = await gemini.gemini_gen('Опиши картинку подробно.', key.key, image_bytes_io=buffer)
-            break
-        except Exception as e:
-            print(e)
-            continue
-    try:
-        await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
-        await wait_msg.delete()
-        return
-    except:
-        pass
-    await message.reply(request)
-    buffer.close()'''
-
 
 @dp.callback_query()
 async def callback(call: CallbackQuery):
