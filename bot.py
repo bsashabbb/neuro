@@ -236,12 +236,12 @@ async def prompt_string(command):
     with get_db() as db:
         prompt = db.query(Prompt).filter_by(command=command).first()
         author = db.query(User).filter_by(id=prompt.author).first()
-        prompt_admins = ''
+        prompt_admins = []
         for prompt_admin in json.loads(prompt.admins):
-            prompt_admins += f'{db.query(User).filter_by(id=prompt_admin).first().get_object().mention_markdown()} (`{prompt_admin}`)'
+            prompt_admins.append(f'{db.query(User).filter_by(id=prompt_admin).first().get_object().mention_markdown()} (`{prompt_admin}`)')
     return (f'`/addprompt {prompt.command}|{prompt.name}|{prompt.description}|{prompt.content}`\n\n'
         f'Создатель: {author.get_object().mention_markdown()} (`{prompt.author}`)\n'
-        f'Админы: {prompt_admins if prompt_admins else 'отсутствуют'}')
+        f'Админы: {', '.join(prompt_admins) if prompt_admins else 'отсутствуют'}')
 
 
 @dp.message(Command(commands=['start']))
@@ -374,8 +374,8 @@ async def stats(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        with open('prompts.json') as f:
-            prompts = json.load(f)
+        with get_db() as db:
+            prompts = db.query(Prompt).all()
         prompts_count = len(prompts)
 
         with get_db() as db:
@@ -596,8 +596,6 @@ async def addprompt(message: Message):
 async def delprompt(message: Message):
     command = message.text.replace('/delprompt ', '')
     command = command.replace('/delprompt@neuro_gemini_bot ', '')
-    with open('prompts.json') as f:
-        prompts = json.load(f)
     with get_db() as db:
         prompt = db.query(Prompt).filter_by(command=command).first()
     try:
@@ -662,24 +660,24 @@ async def addadmin(message: Message):
         return
     data = message.text.replace('/addadmin ', '')
     data = data.replace('/addadmin@neuro_gemini_bot ', '')
-    with open('prompts.json') as f:
-        prompts = json.load(f)
 
     with get_db() as db:
         user = db.query(User).filter(User.id==message.from_user.id).first()
         reply_user = db.query(User).filter(User.id==message.reply_to_message.from_user.id).first()
+        prompt = db.query(Prompt).filter_by(command=data).first()
 
-    if message.from_user.id == creator or message.from_user.id == prompts[data]['creator']:
-        if reply_user.admin:
-            prompts[data]['admins'].append(message.reply_to_message.from_user.id)
+        if message.from_user.id == creator or message.from_user.id == prompt.author:
+            if reply_user.admin:
+                admins = json.loads(prompt.admins)
+                admins.append(message.reply_to_message.from_user.id)
+                prompt.admins = json.dumps(admins)
+                db.commit()
+            else:
+                await message.reply('Целевой пользователь не админ.')
+                return
         else:
-            await message.reply('Целевой пользователь не админ.')
+            await message.reply('Ты не админ.')
             return
-    else:
-        await message.reply('Ты не админ.')
-        return
-    with open('prompts.json', 'w') as f:
-        json.dump(prompts, f)
     await message.reply(f'Админ к /{data} добавлен.')
 
 
@@ -690,48 +688,46 @@ async def deladmin(message: Message):
         return
     data = message.text.replace('/deladmin ', '')
     data = data.replace('/deladmin@neuro_gemini_bot ', '')
-    with open('prompts.json') as f:
-        prompts = json.load(f)
 
     with get_db() as db:
         user = db.query(User).filter(User.id==message.from_user.id).first()
         reply_user = db.query(User).filter(User.id==message.reply_to_message.from_user.id).first()
+        prompt = db.query(Prompt).filter_by(command=data).first()
 
-    if message.from_user.id == creator or message.from_user.id == prompts[data]['creator']:
-        if reply_user.admin:
-            prompts[data]['admins'].remove(message.reply_to_message.from_user.id)
-        else:
-            await message.reply('Целевой пользователь не админ.')
-            return
-
-    with open('prompts.json', 'w') as f:
-        json.dump(prompts, f)
+        if message.from_user.id == creator or message.from_user.id == prompt.author:
+            if reply_user.admin:
+                admins = json.loads(prompt.admins)
+                admins.remove(message.reply_to_message.from_user.id)
+                prompt.admins = json.dumps(admins)
+                #prompts[data]['admins'].remove(message.reply_to_message.from_user.id)
+                db.commit()
+            else:
+                await message.reply('Целевой пользователь не админ.')
+                return
     await message.reply(f'Админ к /{data} удалён.')
 
 
 @dp.message(Command(commands=['myprompts']))
 async def myprompts(message: Message):
-    with open('prompts.json') as f:
-        prompts = json.load(f)
+    with get_db() as db:
+        user_prompts = db.query(Prompt).filter_by(author=message.from_user.id).all()
     message_prompts = ''
-    for prompt in prompts:
-        if prompts[prompt]['creator'] == message.from_user.id:
-            message_prompts += '/' + prompt + '\n'
+    for prompt in user_prompts:
+        message_prompts += '/' + prompt.command + ' "' + prompt.name + '" ' + prompt.description + '\n'
     try:
         await message.reply(message_prompts)
     except aiogram.exceptions.TelegramBadRequest:
-        await message.reply('У вас нет ни одного созданного промпта')
+        await message.reply('У вас нет ни одного созданного промпта.')
 
 
 @dp.message(Command(commands=['yourprompts']))
 async def yourprompts(message: Message):
     if message.from_user.id == creator:
-        with open('prompts.json') as f:
-            prompts = json.load(f)
+        with get_db() as db:
+            user_prompts = db.query(Prompt).filter_by(author=message.from_user.id).all()
         message_prompts = ''
         for prompt in prompts:
-            if prompts[prompt]['creator'] == message.reply_to_message.from_user.id:
-                message_prompts += '/' + prompt + '\n'
+            message_prompts += '/' + prompt.command + ' "' + prompt.name + '" ' + prompt.description + '\n'
         try:
             await message.reply(message_prompts)
         except aiogram.exceptions.TelegramBadRequest:
@@ -743,12 +739,11 @@ async def prompts(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     else:
-        with open('prompts.json') as f:
-            prompts = json.load(f)
+        with get_db() as db:
+            prompts = db.query(Prompt).all()
         list_prompts = []
         for prompt in prompts:
-            message_prompt = '/' + prompt + ' "' + prompts[prompt]['name'] + '" ' + prompts[prompt][
-                'description'] + '\n'
+            message_prompt = '/' + prompt.command + ' "' + prompt.name + '" ' + prompt.description + '\n'
             list_prompts.append(message_prompt)
         btn1 = types.InlineKeyboardButton(text='❌ Скрыть', callback_data='del')
         markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1]])
@@ -1182,12 +1177,14 @@ async def callback(call: CallbackQuery):
     elif call.data.startswith('true__delprompt__'):
         data = call.data.split('__')
         if str(call.from_user.id) == data[3]:
+            string = await prompt_string(data[2])
             with get_db() as db:
                 user = db.query(User).filter(User.id==call.from_user.id).first()
                 prompt = db.query(Prompt).filter_by(command=data[2]).first()
                 db.delete(prompt)
+                db.commit()
             await call.message.edit_text(f'Промпт /{prompt.command} удалён.')
-            await bot.send_message(prompts_channel, await prompt_string(data[2]), parse_mode=ParseMode.MARKDOWN)
+            await bot.send_message(prompts_channel, string, parse_mode=ParseMode.MARKDOWN)
         else:
             await call.answer('Отставить! Это не твоя кнопка!')
 

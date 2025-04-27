@@ -14,5 +14,4 @@ def add_or_update_prompt(command, name, description, content, author=None):
             db.add(prompt)
             status = False
         db.commit()
-        db.refresh(prompt)
     return status
