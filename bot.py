@@ -765,7 +765,7 @@ async def ban(message: Message):
     if message.from_user.id == creator:
         data = message.text.split()
 
-        if data[1]:
+        if len(data) == 2:
             user_id = int(data[1])
         else:
             user_id = message.reply_to_message.from_user.id
@@ -789,7 +789,7 @@ async def unban(message: Message):
     if message.from_user.id == creator:
         data = message.text.split()
 
-        if data[1]:
+        if len(data) == 2:
             user_id = int(data[1])
         else:
             user_id = message.reply_to_message.from_user.id
@@ -908,8 +908,6 @@ async def command_response(message: Message):
     if is_banned(message.from_user.id):
         await message.reply('Вы забанены.')
     elif message.text[0] == '/':
-        with open('prompts.json') as f:
-            prompts = json.load(f)
         command = message.text.split()[0].replace('/', '')
         command = command.split()[0].replace('@neuro_gemini_bot', '')
         prompt = message.text.replace(message.text.split()[0], '')
@@ -921,8 +919,10 @@ async def command_response(message: Message):
         with open('contexts.json') as f:
             contexts = json.load(f)
         try:
-            system_prompt = read_telegraph(prompts[command]['prompt'])
-        except KeyError:
+            with get_db() as db:
+                prompt_obj = db.query(Prompt).filter_by(command=command).first()
+            system_prompt = read_telegraph(prompt_obj.content)
+        except AttributeError:
             return
         with get_db() as db:
             keys = db.query(APIKey).all()
@@ -988,7 +988,6 @@ async def command_response(message: Message):
                 await message.reply_photo(photos[0].media)
             else:
                 await message.reply_media_group(photos)
-        await wait_msg.delete()
 
 
 @dp.message(F.reply_to_message.from_user.id == 7487465375)
@@ -1004,8 +1003,6 @@ async def reply_response(message: Message):
                 break
         else:
             return
-        with open('prompts.json') as f:
-            prompts = json.load(f)
         prompt = message.text
         prompt = read_telegraph(prompt)
 
@@ -1014,7 +1011,9 @@ async def reply_response(message: Message):
         if f'{message.from_user.id}-{command}' not in contexts:
             contexts[f'{message.from_user.id}-{command}'] = []
         context = contexts[f'{message.from_user.id}-{command}']
-        system_prompt = read_telegraph(prompts[command]['prompt'])
+        with get_db() as db:
+            prompt_obj = db.query(Prompt).filter_by(command=command).first()
+        system_prompt = read_telegraph(prompt_obj.content)
         with get_db() as db:
             keys = db.query(APIKey).all()
         wait_msg = await message.reply('Думаю...')
@@ -1069,10 +1068,9 @@ async def reply_response(message: Message):
             if len(photos) == 0:
                 pass
             elif len(photos) == 1:
-                await message.reply_photo(photos[0].media)
+                await message.reply_photo(photos[0].media, caption=photos[0].caption)
             else:
                 await message.reply_media_group(photos)
-        await wait_msg.delete()
 
 # TODO: вынести в отдельную функцию  использовать в обработчиках
 '''@dp.message(F.photo)
