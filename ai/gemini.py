@@ -1,60 +1,69 @@
 import base64
 import mimetypes
 import httpx
-from typing import Optional, List, Dict
+from io import BytesIO
+from typing import Optional, List, Dict, Tuple
 
 async def gemini_gen(
     user_prompt: str,
     api_key: str,
     context: Optional[List[Dict]] = None,
     system_instruction: Optional[str] = None,
-    image_bytes_io = None,
+    image_bytes_io: Optional[BytesIO] = None,
     model_name: str = "gemini-2.0-flash-exp"
-) -> str:
+) -> Tuple[str, List[Dict]]:
     """
-    Асинхронная генерация контента через Gemini API с поддержкой:
-    - Изображений (JPG/PNG/WEBP/HEIC)
-    - Контекста диалога
-    - Системных инструкций
-    - Прокси-соединения
+    Асинхронная генерация с сохранением изображений в контексте
+    Возвращает ответ и обновленный контекст
     """
     
-    # Формирование тела запроса
+    # Формируем части контента
     content_parts = [{"text": user_prompt}]
     
     if image_bytes_io:
-        # Считываем данные из буфера
+        # Определяем MIME-тип по сигнатуре файла
+        header = image_bytes_io.read(4)
+        image_bytes_io.seek(0)
+        
+        mime_type = "image/jpeg"  # значение по умолчанию
+        if header.startswith(b'\x89PNG'):
+            mime_type = "image/png"
+        elif header.startswith(b'\xff\xd8'):
+            mime_type = "image/jpeg"
+        elif header.startswith(b'RIFF') and image_bytes_io.read(8)[4:8] == b'WEBP':
+            mime_type = "image/webp"
+        elif header.startswith(b'heic'):
+            mime_type = "image/heic"
+        
+        image_bytes_io.seek(0)
         image_data = image_bytes_io.read()
         
-        mime_type = 'image/jpeg'
-        
-        # Добавляем данные изображения в контент
         content_parts.append({
             "inline_data": {
                 "mime_type": mime_type,
                 "data": base64.b64encode(image_data).decode("utf-8")
             }
         })
-    
-    # Сборка полного контекста
-    messages = context.copy() if context else []
-    messages.append({"role": "user", "parts": content_parts})
-    
+
+    # Собираем полный контекст
+    updated_context = context.copy() if context else []
+    updated_context.append({
+        "role": "user",
+        "parts": content_parts
+    })
+
+    # Формируем тело запроса
     payload = {
-        "contents": messages,
+        "contents": updated_context,
         "systemInstruction": {"parts": [{"text": system_instruction}]} if system_instruction else None
     }
-    
-    # Настройки подключения
+
     proxy = "http://default:M3b3SZ5Zlv@5.78.57.199:5228"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-    
-    async with httpx.AsyncClient(
-        proxy=proxy,
-        timeout=httpx.Timeout(60.0)
-    ) as client:
+
+    # Отправка запроса (ваш код прокси)
+    async with httpx.AsyncClient(proxy=proxy, timeout=httpx.Timeout(60.0)) as client:
         response = await client.post(
-            url,
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
             params={"key": api_key},
             json=payload
         )
@@ -62,8 +71,14 @@ async def gemini_gen(
         
         response_data = response.json()
         
-        # Извлечение ответа с проверкой структуры
-        if "candidates" not in response_data:
-            raise ValueError("Некорректный ответ API")
-        
-        return response_data["candidates"][0]["content"]["parts"][0]["text"]
+        if not response_data.get("candidates"):
+            raise ValueError("API response structure error")
+
+        # Добавляем ответ модели в контекст
+        model_response = response_data["candidates"][0]["content"]["parts"][0]["text"]
+        updated_context.append({
+            "role": "model",
+            "parts": [{"text": model_response}]
+        })
+
+        return model_response, updated_context

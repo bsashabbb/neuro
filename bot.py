@@ -903,6 +903,194 @@ async def restart(message: Message):
         await message.reply('Временно недоступно.')
 
 
+@dp.message(F.caption.startswith('/'), F.photo)
+async def command_response(message: Message):
+    if is_banned(message.from_user.id):
+        await message.reply('Вы забанены.')
+    elif message.caption[0] == '/':
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        file = await bot.get_file(file_id)
+        file_path = file.file_path
+        buffer = io.BytesIO()
+        buffer.seek(0)
+        await bot.download_file(file_path, buffer)
+
+        command = message.caption.split()[0].replace('/', '')
+        command = command.split()[0].replace('@neuro_gemini_bot', '')
+        prompt = message.caption.replace(message.caption.split()[0], '')
+        prompt = prompt.replace('@neuro_gemini_bot ', '')
+        prompt = read_telegraph(prompt)
+        if prompt == '':
+            prompt = ' '
+
+        with open('contexts.json') as f:
+            contexts = json.load(f)
+        try:
+            with get_db() as db:
+                prompt_obj = db.query(Prompt).filter_by(command=command).first()
+            system_prompt = read_telegraph(prompt_obj.content)
+        except AttributeError:
+            return
+        with get_db() as db:
+            keys = db.query(APIKey).all()
+        wait_msg = await message.reply('Думаю...')
+        if f'{message.from_user.id}-{command}' not in contexts:
+            contexts[f'{message.from_user.id}-{command}'] = []
+        context = contexts[f'{message.from_user.id}-{command}']
+        for key in keys:
+            try:
+                request = await gemini.gemini_gen(prompt, key.key, context, system_prompt, image_bytes_io=buffer)
+                break
+            except Exception as e:
+                continue
+        try:
+            await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
+            await wait_msg.delete()
+            return
+        except:
+            pass
+        response = find_draw_strings(request[0])
+        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        with open('settings.json') as f:
+            settings = json.load(f)
+        if settings[str(message.from_user.id)]['reset']:
+            markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
+        else:
+            markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+        i = len(response[1])
+        x = [0, 4096]
+        ids1 = []
+        while True:
+            msg = await message.reply(response[1][x[0]:x[1]], reply_markup=markup)
+            ids1.append(msg.message_id)
+            if x[1] >= i:
+                break
+            x[0] += 4096
+            x[1] += 4096
+        await wait_msg.delete()
+        context.append({'role': 'user', 'parts': [{'text': prompt}]})
+        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
+        context = request[1]
+        with open('prompts_message_ids.json') as f:
+            ids = json.load(f)
+        if f'{command}' not in ids:
+            ids[f'{command}'] = []
+        for id in ids1:
+            ids[f'{command}'].append(id)
+        contexts[f'{str(message.from_user.id)}-{command}'] = context
+        with open('prompts_message_ids.json', 'w') as f:
+            json.dump(ids, f, indent=4)
+        with open('contexts.json', 'w') as f:
+            json.dump(contexts, f, ensure_ascii=False, indent=4)
+        with open('settings.json') as f:
+            settings = json.load(f)
+        photos = []
+        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+            for prompt in response[0]:
+                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                photos.append(types.InputMediaPhoto(media=request, caption=prompt))
+            if len(photos) == 0:
+                pass
+            elif len(photos) == 1:
+                await message.reply_photo(photos[0].media)
+            else:
+                await message.reply_media_group(photos)
+        buffer.close()
+
+
+@dp.message(F.reply_to_message.from_user.id == 7487465375, F.photo)
+async def reply_response(message: Message):
+    if is_banned(message.from_user.id):
+        await message.reply('Вы забанены.')
+    else:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        file = await bot.get_file(file_id)
+        file_path = file.file_path
+        buffer = io.BytesIO()
+        buffer.seek(0)
+        await bot.download_file(file_path, buffer)
+
+        with open('prompts_message_ids.json') as f:
+            ids = json.load(f)
+        for prompt_ids in ids:
+            if message.reply_to_message.message_id in ids[prompt_ids]:
+                command = prompt_ids
+                break
+        else:
+            return
+        prompt = message.caption
+        prompt = read_telegraph(prompt)
+
+        with open('contexts.json') as f:
+            contexts = json.load(f)
+        if f'{message.from_user.id}-{command}' not in contexts:
+            contexts[f'{message.from_user.id}-{command}'] = []
+        context = contexts[f'{message.from_user.id}-{command}']
+        with get_db() as db:
+            prompt_obj = db.query(Prompt).filter_by(command=command).first()
+        system_prompt = read_telegraph(prompt_obj.content)
+        with get_db() as db:
+            keys = db.query(APIKey).all()
+        wait_msg = await message.reply('Думаю...')
+        for key in keys:
+            try:
+                request = await gemini.gemini_gen(prompt, key.key, context, system_prompt, image_bytes_io=buffer)
+                break
+            except Exception as e:
+                continue
+        try:
+            await message.reply(f'Ошибка при генерации: {e}\n Вы можете сообщить о ней по команде /send')
+            await wait_msg.delete()
+            return
+        except:
+            pass
+        response = find_draw_strings(request[0])
+        with open('settings.json') as f:
+            settings = json.load(f)
+        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        if settings[str(message.from_user.id)]['reset']:
+            markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
+        else:
+            markup = types.InlineKeyboardMarkup(inline_keyboard=[])
+        i = len(response[1])
+        x = [0, 4096]
+        ids1 = []
+        while True:
+            msg = await message.reply(response[1][x[0]:x[1]], reply_markup=markup)
+            ids1.append(msg.message_id)
+            if x[1] >= i:
+                break
+            x[0] += 4096
+            x[1] += 4096
+        await wait_msg.delete()
+        context = request[1]
+        for id in ids1:
+            ids[f'{command}'].append(id)
+        contexts[f'{str(message.from_user.id)}-{command}'] = context
+        with open('prompts_message_ids.json', 'w') as f:
+            json.dump(ids, f, indent=4)
+        with open('contexts.json', 'w') as f:
+            json.dump(contexts, f, ensure_ascii=False, indent=4)
+        with open('settings.json') as f:
+            settings = json.load(f)
+        photos = []
+        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+            for prompt in response[0]:
+                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                photos.append(types.InputMediaPhoto(media=request, caption=prompt))
+            if len(photos) == 0:
+                pass
+            elif len(photos) == 1:
+                await message.reply_photo(photos[0].media, caption=photos[0].caption)
+            else:
+                await message.reply_media_group(photos)
+        buffer.close()
+
+
 @dp.message(F.text.startswith('/'))
 async def command_response(message: Message):
     if is_banned(message.from_user.id):
@@ -942,7 +1130,7 @@ async def command_response(message: Message):
             return
         except:
             pass
-        response = find_draw_strings(request)
+        response = find_draw_strings(request[0])
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
         with open('settings.json') as f:
@@ -962,8 +1150,7 @@ async def command_response(message: Message):
             x[0] += 4096
             x[1] += 4096
         await wait_msg.delete()
-        context.append({'role': 'user', 'parts': [{'text': prompt}]})
-        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
+        context = request[1]
         with open('prompts_message_ids.json') as f:
             ids = json.load(f)
         if f'{command}' not in ids:
@@ -1029,7 +1216,7 @@ async def reply_response(message: Message):
             return
         except:
             pass
-        response = find_draw_strings(request)
+        response = find_draw_strings(request[0])
         with open('settings.json') as f:
             settings = json.load(f)
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
@@ -1049,8 +1236,7 @@ async def reply_response(message: Message):
             x[0] += 4096
             x[1] += 4096
         await wait_msg.delete()
-        context.append({'role': 'user', 'parts': [{'text': prompt}]})
-        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
+        context = request[1]
         for id in ids1:
             ids[f'{command}'].append(id)
         contexts[f'{str(message.from_user.id)}-{command}'] = context
