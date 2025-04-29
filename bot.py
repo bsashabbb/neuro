@@ -138,9 +138,6 @@ def read_telegraph(text):
     return re.sub(pattern, replace_links, text)
 
 
-def default_sets(id):  # TODO: work
-    pass
-
 
 def is_user(id):
     with get_db() as db:
@@ -152,8 +149,9 @@ def is_user(id):
 
 
 def sets_msg(id):
-    with open('settings.json') as f:
-        settings = json.load(f)
+    with get_db() as db:
+        user = db.query(User).filter_by(id=id).first()
+        sets = json.loads(user.settings)
     reset = types.InlineKeyboardButton(text='Кнопки сброса диалога:', callback_data='reset')
     reset_on = types.InlineKeyboardButton(text='✅', callback_data='reset_on')
     reset_off = types.InlineKeyboardButton(text='❎', callback_data='reset_off')
@@ -182,20 +180,29 @@ def sets_msg(id):
             [imageai_sd, imageai_flux]
         ]
     )
-    if settings[str(id)]["reset"]:
+    if sets["reset"]:
         reset_status = "включено"
     else:
         reset_status = "выключено"
-    if settings[str(id)]["pictures_in_dialog"]:
+    if sets["pictures_in_dialog"]:
         pictures_status = "включено"
     else:
         pictures_status = "выключено"
     msg = (f'Настройки:\n\n'
            f'Кнопки сброса диалога: {reset_status}\n'
            f'Картинки в диалоге: {pictures_status}\n'
-           f'Количество картинок: {settings[str(id)]["pictures_count"]}\n'
-           f'Нейросеть для генерации картинок в диалоге: {settings[str(id)]["imageai"]}')
+           f'Количество картинок: {sets["pictures_count"]}\n'
+           f'Нейросеть для генерации картинок в диалоге: {sets["imageai"]}')
     return msg, markup
+
+
+def edit_sets(id, setting_name, value):
+    with get_db() as db:
+        user = db.query(User).filter_by(id=id).first()
+        sets = json.loads(user.settings)
+        sets[setting_name] = value
+        user.settings = json.dumps(sets)
+        db.commit()
 
 
 def split_message(text):
@@ -262,13 +269,6 @@ async def start(message: Message):
                 db.add(new_user)
 
             db.commit()
-        with open('settings.json') as f:
-            settings = json.load(f)
-        if str(message.from_user.id) not in settings:
-            settings[str(message.from_user.id)] = {'reset': True, 'pictures_in_dialog': True, 'pictures_count': 5,
-                                                   'imageai': 'sd'}
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
         await message.reply('Привет!\nПомощь - /help')
 
 
@@ -295,10 +295,11 @@ async def sd(message: Message):
         prompt = prompt.replace('/sd@neuro_gemini_bot ', '')
         wait_msg = await message.reply('Рисую...')
         try:
-            with open('settings.json') as f:
-                settings = json.load(f)
+            with get_db() as db:
+                user = db.query(User).filter_by(id=message.from_user.id).first()
+                sets = json.loads(user.settings)
             photos = []
-            for i in range(settings[str(message.from_user.id)]['pictures_count']):
+            for i in range(sets['pictures_count']):
                 request = await generate.sdgen(prompt)
                 photos.append(types.InputMediaPhoto(media=request))
             if len(photos) == 1:
@@ -320,10 +321,11 @@ async def flux(message: Message):
         prompt = prompt.replace('/flux@neuro_gemini_bot ', '')
         wait_msg = await message.reply('Рисую...')
         try:
-            with open('settings.json') as f:
-                settings = json.load(f)
+            with get_db() as db:
+                user = db.query(User).filter_by(id=message.from_user.id).first()
+                sets = json.loads(user.settings)
             photos = []
-            for i in range(settings[str(message.from_user.id)]['pictures_count']):
+            for i in range(sets['pictures_count']):
                 request = await generate.fluxgen(prompt)
                 photos.append(types.InputMediaPhoto(media=request))
             if len(photos) == 1:
@@ -953,9 +955,10 @@ async def command_response(message: Message):
         response = find_draw_strings(request[0])
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        if settings[str(message.from_user.id)]['reset']:
+        with get_db() as db:
+            user = db.query(User).filter_by(id=message.from_user.id).first()
+            sets = json.loads(user.settings)
+        if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -970,8 +973,6 @@ async def command_response(message: Message):
             x[0] += 4096
             x[1] += 4096
         await wait_msg.delete()
-        context.append({'role': 'user', 'parts': [{'text': prompt}]})
-        context.append({'role': 'model', 'parts': [{'text': response[1]}]})
         context = request[1]
         with open('prompts_message_ids.json') as f:
             ids = json.load(f)
@@ -984,12 +985,10 @@ async def command_response(message: Message):
             json.dump(ids, f, indent=4)
         with open('contexts.json', 'w') as f:
             json.dump(contexts, f, ensure_ascii=False, indent=4)
-        with open('settings.json') as f:
-            settings = json.load(f)
         photos = []
-        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+        if sets['pictures_in_dialog']:
             for prompt in response[0]:
-                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                request = await generate.sdgen(prompt) if sets["imageai"] == 'sd' else await generate.fluxgen(prompt) if sets["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 0:
                 pass
@@ -1048,11 +1047,12 @@ async def reply_response(message: Message):
         except:
             pass
         response = find_draw_strings(request[0])
-        with open('settings.json') as f:
-            settings = json.load(f)
+        with get_db() as db:
+            user = db.query(User).filter_by(id=message.from_user.id).first()
+            sets = json.loads(user.settings)
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
-        if settings[str(message.from_user.id)]['reset']:
+        if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -1075,12 +1075,10 @@ async def reply_response(message: Message):
             json.dump(ids, f, indent=4)
         with open('contexts.json', 'w') as f:
             json.dump(contexts, f, ensure_ascii=False, indent=4)
-        with open('settings.json') as f:
-            settings = json.load(f)
         photos = []
-        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+        if sets['pictures_in_dialog']:
             for prompt in response[0]:
-                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                request = await generate.sdgen(prompt) if sets["imageai"] == 'sd' else await generate.fluxgen(prompt) if sets["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 0:
                 pass
@@ -1133,9 +1131,10 @@ async def command_response(message: Message):
         response = find_draw_strings(request[0])
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        if settings[str(message.from_user.id)]['reset']:
+        with get_db() as db:
+            user = db.query(User).filter_by(id=message.from_user.id).first()
+            sets = json.loads(user.settings)
+        if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -1162,12 +1161,10 @@ async def command_response(message: Message):
             json.dump(ids, f, indent=4)
         with open('contexts.json', 'w') as f:
             json.dump(contexts, f, ensure_ascii=False, indent=4)
-        with open('settings.json') as f:
-            settings = json.load(f)
         photos = []
-        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+        if sets['pictures_in_dialog']:
             for prompt in response[0]:
-                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                request = await generate.sdgen(prompt) if sets["imageai"] == 'sd' else await generate.fluxgen(prompt) if sets["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 0:
                 pass
@@ -1217,11 +1214,12 @@ async def reply_response(message: Message):
         except:
             pass
         response = find_draw_strings(request[0])
-        with open('settings.json') as f:
-            settings = json.load(f)
+        with get_db() as db:
+            user = db.query(User).filter_by(id=message.from_user.id).first()
+            sets = json.loads(user.settings)
         btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
         btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
-        if settings[str(message.from_user.id)]['reset']:
+        if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[])
@@ -1244,12 +1242,10 @@ async def reply_response(message: Message):
             json.dump(ids, f, indent=4)
         with open('contexts.json', 'w') as f:
             json.dump(contexts, f, ensure_ascii=False, indent=4)
-        with open('settings.json') as f:
-            settings = json.load(f)
         photos = []
-        if settings[str(message.from_user.id)]['pictures_in_dialog']:
+        if sets['pictures_in_dialog']:
             for prompt in response[0]:
-                request = await generate.sdgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'sd' else await generate.fluxgen(prompt) if settings[str(message.from_user.id)]["imageai"] == 'flux' else None
+                request = await generate.sdgen(prompt) if sets["imageai"] == 'sd' else await generate.fluxgen(prompt) if sets["imageai"] == 'flux' else None
                 photos.append(types.InputMediaPhoto(media=request, caption=prompt))
             if len(photos) == 0:
                 pass
@@ -1363,44 +1359,32 @@ async def callback(call: CallbackQuery):
     elif call.data == 'reset':
         await call.answer('Кнопки сброса диалога')
 
-    elif call.data == 'reset_on':
+    elif call.data.startswith('reset'):
         await call.message.edit_text('Загрузка... Подождите.')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        settings[str(call.from_user.id)]['reset'] = True
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
-        await call.answer('Кнопки сброса диалога включены', show_alert=True)
-        msg = sets_msg(call.from_user.id)
-        await call.message.edit_text(msg[0], reply_markup=msg[1])
 
-    elif call.data == 'reset_off':
-        await call.message.edit_text('Загрузка... Подождите.')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        settings[str(call.from_user.id)]['reset'] = False
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
-        await call.answer('Кнопки сброса диалога выключены', show_alert=True)
+        if data[1] == 'on':
+            edit_sets(call.from_user.id, 'reset', True)
+            await call.answer(f'Кнопки сброса диалога включены', show_alert=True)
+        elif data[1] == 'off':
+            edit_sets(call.from_user.id, 'reset', False)
+            await call.answer(f'Кнопки сброса диалога отключены', show_alert=True)
+
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
     elif call.data == 'pictures_in_chat':
         await call.answer('Генерация картинок в диалоге')
 
-    elif call.data.startswith('pictures_in_chat_'):
+    elif call.data.startswith('pictures_'):
         await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        if data[3] == 'on':
-            settings[str(call.from_user.id)]['pictures_in_chat'] = True
+        if data[1] == 'on':
+            edit_sets(call.from_user.id, 'pictures_in_chat', True)
             await call.answer(f'Картинки в диалоге включены', show_alert=True)
-        elif data[3] == 'off':
-            settings[str(call.from_user.id)]['pictures_in_chat'] = False
+        elif data[1] == 'off':
+            edit_sets(call.from_user.id, 'pictures_in_chat', False)
             await call.answer(f'Картинки в диалоге отключены', show_alert=True)
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
+        
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
@@ -1410,11 +1394,7 @@ async def callback(call: CallbackQuery):
     elif call.data.startswith('pictures_count_'):
         await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        settings[str(call.from_user.id)]['pictures_count'] = int(data[2])
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
+        edit_sets(call.from_user.id, 'pictures_count', int(data[2]))
         await call.answer(f'Количество генерируемых картинок изменено на {data[2]}', show_alert=True)
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
@@ -1425,12 +1405,8 @@ async def callback(call: CallbackQuery):
     elif call.data.startswith('imageai_'):
         await call.message.edit_text('Загрузка... Подождите.')
         data = call.data.split('_')
-        with open('settings.json') as f:
-            settings = json.load(f)
-        settings[str(call.from_user.id)]['imageai'] = data[1]
-        with open('settings.json', 'w') as f:
-            json.dump(settings, f)
-            await call.answer(f'Нейросеть для генерации картинок в диалоге изменена на {settings[str(call.from_user.id)]['imageai']}')
+        edit_sets(call.from_user.id, 'imageai', data[1])
+        await call.answer(f'Нейросеть для генерации картинок в диалоге изменена на {data[1]}')
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
