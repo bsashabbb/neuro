@@ -11,7 +11,7 @@ class User(Base):
     banned = Column(Boolean, default=False)
     admin = Column(Boolean, default=False)
     object = Column(String)
-    settings = Column(String, default="{'reset': True, 'pictures_in_dialog': True, 'pictures_count': 5, 'imageai': 'sd'}")
+    settings = Column(String, default='{"reset": true, "pictures_in_dialog": true, "pictures_count": 5, "imageai": "sd"}')
     created_at = Column(DateTime, default=func.now())
 
     def get_object(self) -> types.User:

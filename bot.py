@@ -1360,6 +1360,7 @@ async def callback(call: CallbackQuery):
         await call.answer('Кнопки сброса диалога')
 
     elif call.data.startswith('reset'):
+        data = call.data.split('_')
         await call.message.edit_text('Загрузка... Подождите.')
 
         if data[1] == 'on':
@@ -1372,22 +1373,6 @@ async def callback(call: CallbackQuery):
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
-    elif call.data == 'pictures_in_chat':
-        await call.answer('Генерация картинок в диалоге')
-
-    elif call.data.startswith('pictures_'):
-        await call.message.edit_text('Загрузка... Подождите.')
-        data = call.data.split('_')
-        if data[1] == 'on':
-            edit_sets(call.from_user.id, 'pictures_in_chat', True)
-            await call.answer(f'Картинки в диалоге включены', show_alert=True)
-        elif data[1] == 'off':
-            edit_sets(call.from_user.id, 'pictures_in_chat', False)
-            await call.answer(f'Картинки в диалоге отключены', show_alert=True)
-        
-        msg = sets_msg(call.from_user.id)
-        await call.message.edit_text(msg[0], reply_markup=msg[1])
-
     elif call.data == 'pictures_count':
         await call.answer('Количество генерируемых картинок')
 
@@ -1396,6 +1381,22 @@ async def callback(call: CallbackQuery):
         data = call.data.split('_')
         edit_sets(call.from_user.id, 'pictures_count', int(data[2]))
         await call.answer(f'Количество генерируемых картинок изменено на {data[2]}', show_alert=True)
+        msg = sets_msg(call.from_user.id)
+        await call.message.edit_text(msg[0], reply_markup=msg[1])
+
+    elif call.data == 'pictures_in_chat':
+        await call.answer('Генерация картинок в диалоге')
+
+    elif call.data.startswith('pictures_'):
+        await call.message.edit_text('Загрузка... Подождите.')
+        data = call.data.split('_')
+        if data[1] == 'on':
+            edit_sets(call.from_user.id, 'pictures_in_dialog', True)
+            await call.answer(f'Картинки в диалоге включены', show_alert=True)
+        elif data[1] == 'off':
+            edit_sets(call.from_user.id, 'pictures_in_dialog', False)
+            await call.answer(f'Картинки в диалоге отключены', show_alert=True)
+        
         msg = sets_msg(call.from_user.id)
         await call.message.edit_text(msg[0], reply_markup=msg[1])
 
