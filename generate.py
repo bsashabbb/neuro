@@ -3,7 +3,7 @@ from http_client.client import get_client
 import base64
 from typing import Optional, List, Dict, Tuple
 
-OPO_API = 'https://api.opo.pp.ru/'
+OPO_API = 'https://api.r00t.dpdns.org/'
 
 
 async def onlinegen(prompt):

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text
-from .base import Base
+from . import Base
 
 class PromptGroup(Base):
     """Модель групп промптов."""

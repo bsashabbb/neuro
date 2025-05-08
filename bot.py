@@ -64,7 +64,7 @@ safety_settings = [
 
 
 class MessageToAdmin(StatesGroup):
-    text_message = State('text_message')
+    text_message = State()
 
 
 class Permissions(str, Enum):
@@ -1020,7 +1020,7 @@ async def reply_response(message: Message):
                 break
         else:
             return
-        prompt = message.caption
+        prompt = message.caption if message.caption else ' '
         prompt = read_telegraph(prompt)
 
         with open('contexts.json') as f:
