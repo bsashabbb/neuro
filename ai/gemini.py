@@ -10,7 +10,7 @@ async def gemini_gen(
     context: Optional[List[Dict]] = None,
     system_instruction: Optional[str] = None,
     image_bytes_io: Optional[BytesIO] = None,
-    model_name: str = "gemini-2.0-flash-exp"
+    model_name: str = "gemini-2.5-flash-preview-04-17"
 ) -> Tuple[str, List[Dict]]:
     """
     Асинхронная генерация с сохранением изображений в контексте
