@@ -491,7 +491,7 @@ async def test(message: Message):
     for key in keys:
         try:
             response = await gemini.gemini_gen('Привет!', key.key)
-            await message.reply(response)
+            await message.reply(response[0])
             return
         except Exception as e:
             continue
