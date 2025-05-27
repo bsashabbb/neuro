@@ -1259,6 +1259,7 @@ async def reply_response(message: Message):
 async def callback(call: CallbackQuery):
     if is_banned(call.from_user.id):
         await call.answer('Ты забанен.', show_alert=True)
+        return
     if call.data == 'delall_context':
         btn1 = types.InlineKeyboardButton(text='Нет', callback_data=f'false_delall_context_{call.from_user.id}')
         btn2 = types.InlineKeyboardButton(text='Да', callback_data=f'true_delall_context_{call.from_user.id}')
