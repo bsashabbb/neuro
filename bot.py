@@ -953,8 +953,8 @@ async def command_response(message: Message):
         except:
             pass
         response = find_draw_strings(request[0])
-        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
-        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        btn1 = types.InlineKeyboardButton(text='Сброс всего', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сброс', callback_data=f'delcontext__{command}')
         with get_db() as db:
             user = db.query(User).filter_by(id=message.from_user.id).first()
             sets = json.loads(user.settings)
@@ -1050,8 +1050,8 @@ async def reply_response(message: Message):
         with get_db() as db:
             user = db.query(User).filter_by(id=message.from_user.id).first()
             sets = json.loads(user.settings)
-        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
-        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        btn1 = types.InlineKeyboardButton(text='Сброс всего', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сброс', callback_data=f'delcontext__{command}')
         if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
@@ -1129,8 +1129,8 @@ async def command_response(message: Message):
         except:
             pass
         response = find_draw_strings(request[0])
-        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
-        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        btn1 = types.InlineKeyboardButton(text='Сброс всего', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сброс', callback_data=f'delcontext__{command}')
         with get_db() as db:
             user = db.query(User).filter_by(id=message.from_user.id).first()
             sets = json.loads(user.settings)
@@ -1217,8 +1217,8 @@ async def reply_response(message: Message):
         with get_db() as db:
             user = db.query(User).filter_by(id=message.from_user.id).first()
             sets = json.loads(user.settings)
-        btn1 = types.InlineKeyboardButton(text='Сбросить весь диалог', callback_data='delall_context')
-        btn2 = types.InlineKeyboardButton(text='Сбросить диалог', callback_data=f'delcontext__{command}')
+        btn1 = types.InlineKeyboardButton(text='Сброс всего', callback_data='delall_context')
+        btn2 = types.InlineKeyboardButton(text='Сброс', callback_data=f'delcontext__{command}')
         if sets['reset']:
             markup = types.InlineKeyboardMarkup(inline_keyboard=[[btn1, btn2]])
         else:
